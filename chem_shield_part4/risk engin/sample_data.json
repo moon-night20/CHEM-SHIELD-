@@ -1,0 +1,51 @@
+{
+  "description": "Sample outputs from the network anomaly detector and the physical/process anomaly detector. The correlation engine groups events; the risk engine scores each incident. Criticality values are experimental CHEM-SHIELD parameters.",
+  "assets": [
+    {
+      "asset_id": "PLC_01",
+      "criticality": 1.0
+    },
+    {
+      "asset_id": "PLC_02",
+      "criticality": 0.5
+    }
+  ],
+  "events": [
+    {
+      "timestamp": "2026-09-18T09:31:01",
+      "asset_id": "PLC_01",
+      "event_type": "network",
+      "anomaly_score": 0.70
+    },
+    {
+      "timestamp": "2026-09-18T09:31:04",
+      "asset_id": "PLC_01",
+      "event_type": "physical",
+      "anomaly_score": 0.82
+    },
+    {
+      "timestamp": "2026-09-18T09:31:08",
+      "asset_id": "PLC_01",
+      "event_type": "physical",
+      "anomaly_score": 0.91
+    },
+    {
+      "timestamp": "2026-09-18T09:32:30",
+      "asset_id": "PLC_01",
+      "event_type": "network",
+      "anomaly_score": 0.80
+    },
+    {
+      "timestamp": "2026-09-18T09:31:05",
+      "asset_id": "PLC_02",
+      "event_type": "network",
+      "anomaly_score": 0.65
+    },
+    {
+      "timestamp": "2026-09-18T09:31:07",
+      "asset_id": "PLC_02",
+      "event_type": "physical",
+      "anomaly_score": 0.88
+    }
+  ]
+}
