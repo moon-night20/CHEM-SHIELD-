@@ -1,7 +1,7 @@
 const $ = (id) => document.getElementById(id);
 let connected = false;
 const trendHistory = [];
-const trendLimit = 4;
+const trendLimit = 60;
 let sequenceCounter = 0;
 let selectedFocus = 'temperature';
 
@@ -26,6 +26,8 @@ function updateFocus(state) {
 }
 
 function recordTrend(state) {
+  const historyWindow = $('history-window');
+  const wasAtLiveEdge = historyWindow.scrollHeight - historyWindow.scrollTop - historyWindow.clientHeight < 24;
   trendHistory.push({
     sequence: ++sequenceCounter,
     time: new Date(),
@@ -45,6 +47,7 @@ function recordTrend(state) {
       <strong>${sample.power.toFixed(2)} <small>kW</small></strong>
     </article>
   `).join('');
+  if (wasAtLiveEdge) historyWindow.scrollTop = historyWindow.scrollHeight;
 }
 
 function setConnection(online) {
