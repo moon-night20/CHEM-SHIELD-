@@ -37,16 +37,17 @@ def run(host: str, port: int, interval: float, database: str) -> None:
             registers = read_registers(client)
             motor_on = bool(registers[0])
             target_rpm = registers[1]
-            state = unit.step(motor_on, target_rpm, interval)
+            paused = registers[EVENT_CODE] == 5
+            state = unit.state if paused else unit.step(motor_on, target_rpm, interval)
 
             event_code, event_value = registers[EVENT_CODE], registers[EVENT_VALUE]
-            if event_code == 1:
+            if not paused and event_code == 1:
                 unit.state.rpm = max(0.0, unit.state.rpm + event_value - 1000)
-            elif event_code == 2:
+            elif not paused and event_code == 2:
                 unit.state.temperature += event_value / 10
-            elif event_code == 3:
+            elif not paused and event_code == 3:
                 unit.state.pressure += event_value / 10
-            elif event_code == 4:
+            elif not paused and event_code == 4:
                 unit.state.rpm += 250
 
             values = list(registers)
@@ -54,7 +55,7 @@ def run(host: str, port: int, interval: float, database: str) -> None:
             values[3] = round(unit.state.temperature * 100)
             values[4] = round(unit.state.pressure * 100)
             values[5] = round(unit.state.power * 100)
-            values[EVENT_CODE] = 0
+            values[EVENT_CODE] = 5 if paused else 0
             values[EVENT_VALUE] = 0
             write_registers(client, values)
 

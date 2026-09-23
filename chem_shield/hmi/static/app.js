@@ -1,7 +1,29 @@
 const $ = (id) => document.getElementById(id);
 let connected = false;
 const trendHistory = [];
-const trendLimit = 7;
+const trendLimit = 30;
+let selectedFocus = 'temperature';
+let selectedStep = 'mixer';
+
+const focusConfig = {
+  temperature: {label: 'TEMPERATURE', unit: '°C', value: (state) => state.temperature, target: () => '80.0 °C'},
+  speed: {label: 'SPEED', unit: 'RPM', value: (state) => state.rpm, target: (state) => `${Math.round(state.target_rpm)} RPM`},
+  pressure: {label: 'PRESSURE', unit: 'bar', value: (state) => state.pressure, target: () => '4.00 bar'},
+  power: {label: 'POWER', unit: 'kW', value: (state) => state.power, target: () => '12.00 kW'},
+};
+
+function formatFocusValue(focus, value) {
+  return focus === 'speed' ? Math.round(value) : Number(value).toFixed(2);
+}
+
+function updateFocus(state) {
+  const config = focusConfig[selectedFocus];
+  $('focus-label').textContent = config.label;
+  $('focus-value').textContent = formatFocusValue(selectedFocus, config.value(state));
+  $('focus-unit').textContent = config.unit;
+  $('focus-target').textContent = config.target(state);
+  $('focus-status').textContent = state.motor_status === 'PAUSED' ? 'PAUSED' : state.motor_status === 'RUNNING' ? 'WITHIN RANGE' : 'STOPPED';
+}
 
 function recordTrend(state) {
   trendHistory.push({
@@ -36,9 +58,15 @@ function setState(state) {
   const running = state.motor_status === 'RUNNING';
   $('state-label').textContent = state.motor_status;
   $('command-state').textContent = state.motor_status;
-  $('state-badge').className = `state-badge ${running ? 'running' : 'stopped'}`;
+  $('state-badge').className = `state-badge ${running ? 'running' : state.motor_status === 'PAUSED' ? 'paused' : 'stopped'}`;
+  $('mixer-status').textContent = state.motor_status;
+  $('heater-status').textContent = running ? 'HEATING' : state.motor_status === 'PAUSED' ? 'HOLD' : 'STANDBY';
+  $('pressurizer-status').textContent = running ? 'STABLE' : state.motor_status === 'PAUSED' ? 'HOLD' : 'STABLE';
+  $('cooler-status').textContent = running ? 'ACTIVE' : 'STANDBY';
+  $('output-status').textContent = running ? 'FLOWING' : state.motor_status === 'PAUSED' ? 'HOLD' : 'READY';
   $('target-input').value = Math.round(state.target_rpm);
   $('target-range').value = Math.round(state.target_rpm);
+  updateFocus(state);
   recordTrend(state);
 }
 
@@ -89,6 +117,15 @@ async function sendCommand(action) {
 }
 
 document.querySelectorAll('[data-action]').forEach((button) => button.addEventListener('click', () => sendCommand(button.dataset.action)));
+document.querySelectorAll('[data-focus]').forEach((button) => button.addEventListener('click', () => {
+  selectedFocus = button.dataset.focus;
+  document.querySelectorAll('[data-focus]').forEach((item) => item.classList.toggle('selected', item === button));
+  refresh();
+}));
+document.querySelectorAll('[data-step]').forEach((button) => button.addEventListener('click', () => {
+  selectedStep = button.dataset.step;
+  document.querySelectorAll('[data-step]').forEach((item) => item.classList.toggle('selected', item === button));
+}));
 $('apply-setpoint').addEventListener('click', () => sendCommand('setpoint'));
 $('target-range').addEventListener('input', (event) => { $('target-input').value = event.target.value; });
 $('target-input').addEventListener('input', (event) => { $('target-range').value = Math.max(0, Math.min(3000, event.target.value)); });

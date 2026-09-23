@@ -14,14 +14,24 @@
     </header>
 
     <main class="fixed-dashboard">
-      <section class="flow-panel">
-        <div class="flow-heading"><div><p class="eyebrow">LIVE QUEUE / BOTTOM → TOP</p><h2>Process Flow <em>M-01</em></h2></div><div class="flow-state"><span class="state-badge stopped" id="state-badge"><span class="state-light"></span><span id="state-label">STOPPED</span></span><span class="trend-window" id="trend-window">0 RECORDS</span></div></div>
-        <div class="flow-track"><div class="flow-axis"><span>OLDER</span><i></i><b>↑</b><i></i><span>NEW</span></div><div class="sequence-list" id="sequence-list"><div class="chart-empty">Waiting for the first one-second process record...</div></div></div>
+      <section class="monitor-panel">
+        <div class="monitor-heading"><div><p class="eyebrow">SCADA PROCESS MONITOR / M-01</p><h2>Virtual machine line</h2></div><div class="flow-state"><span class="state-badge stopped" id="state-badge"><span class="state-light"></span><span id="state-label">STOPPED</span></span><span class="trend-window" id="trend-window">0 RECORDS</span></div></div>
+        <nav class="process-line" aria-label="Process steps">
+          <button class="process-step selected" data-step="mixer"><span class="step-index">01</span><strong>MIXER</strong><small id="mixer-status">STOPPED</small></button><i class="process-connector"></i>
+          <button class="process-step" data-step="heater"><span class="step-index">02</span><strong>HEATER</strong><small id="heater-status">STANDBY</small></button><i class="process-connector"></i>
+          <button class="process-step" data-step="pressurizer"><span class="step-index">03</span><strong>PRESSURIZER</strong><small id="pressurizer-status">STABLE</small></button><i class="process-connector"></i>
+          <button class="process-step" data-step="cooler"><span class="step-index">04</span><strong>COOLING</strong><small id="cooler-status">STANDBY</small></button><i class="process-connector"></i>
+          <button class="process-step" data-step="output"><span class="step-index">05</span><strong>OUTPUT</strong><small id="output-status">READY</small></button>
+        </nav>
+        <section class="monitor-body">
+          <div class="focus-panel"><p class="eyebrow">FOCUSED READOUT</p><div class="focus-tabs"><button class="focus-tab selected" data-focus="temperature">TEMPERATURE</button><button class="focus-tab" data-focus="speed">SPEED</button><button class="focus-tab" data-focus="pressure">PRESSURE</button><button class="focus-tab" data-focus="power">POWER</button></div><div class="focus-value"><span id="focus-label">TEMPERATURE</span><strong id="focus-value">--</strong><small id="focus-unit">°C</small></div><div class="focus-meta"><span>Target <b id="focus-target">--</b></span><span>Status <b id="focus-status">WAITING</b></span></div></div>
+          <div class="history-panel"><div class="history-heading"><div><p class="eyebrow">LIVE QUEUE / BOTTOM → TOP</p><h3>Process history</h3></div><span class="history-hint">SCROLL FOR OLDER RECORDS</span></div><div class="history-window" id="history-window"><div class="sequence-list" id="sequence-list"><div class="chart-empty">Waiting for the first one-second process record...</div></div></div></div>
+        </section>
       </section>
       <section class="control-panel panel">
         <div class="control-title"><p class="eyebrow">OPERATOR CONTROL</p><strong id="command-state">STOPPED</strong><span class="control-note" id="command-feedback">PLC-01 LOCAL</span></div>
         <div class="target-inline"><label for="target-input">TARGET</label><div class="target-entry"><input id="target-input" type="number" min="0" max="3000" value="1500"><span>RPM</span></div><input class="range-input" id="target-range" type="range" min="0" max="3000" value="1500" step="50" aria-label="Target speed slider"></div>
-        <div class="motor-actions"><button class="stop-button" data-action="stop"><span>■</span> STOP MOTOR</button><button class="start-button" data-action="start"><span>▶</span> START MOTOR</button></div>
+        <div class="motor-actions"><button class="stop-button" data-action="stop"><span>■</span> STOP</button><button class="pause-button" data-action="pause"><span>Ⅱ</span> PAUSE</button><button class="start-button" data-action="start"><span>▶</span> START</button></div>
         <div class="secondary-actions"><button class="apply-button" id="apply-setpoint">APPLY TARGET</button><div class="test-inline"><label for="event-type">TEST EVENT GENERATOR</label><select id="event-type"><option value="rpm_deviation">RPM DEVIATION</option><option value="temperature_increase">TEMPERATURE</option><option value="pressure_spike">PRESSURE SPIKE</option><option value="sensor_inconsistency">SENSOR CHECK</option></select><input id="event-value" type="number" value="1800" aria-label="Test event value"><button id="event-button">INJECT EVENT</button></div></div>
         <span class="control-note" id="event-feedback">LAB TEST READY</span>
       </section>
