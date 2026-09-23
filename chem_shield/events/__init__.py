@@ -1,0 +1,1 @@
+"""Controlled, simulation-only abnormal event helpers."""

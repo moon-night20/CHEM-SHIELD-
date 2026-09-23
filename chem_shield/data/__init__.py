@@ -1,0 +1,1 @@
+"""Telemetry storage for the virtual laboratory."""

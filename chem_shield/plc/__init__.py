@@ -1,0 +1,1 @@
+"""PLC-facing register contract and simulator."""

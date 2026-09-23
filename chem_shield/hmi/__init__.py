@@ -1,0 +1,1 @@
+"""Browser-based operator HMI."""

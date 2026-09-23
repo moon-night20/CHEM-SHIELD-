@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>CHEM-SHIELD Virtual Machine | Operator Console</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">CS</span><div><p class="eyebrow">CHEM-SHIELD VIRTUAL MACHINE / DEFENSIVE OT LAB</p><h1>Virtual machine command console</h1><p class="brand-subtitle">Virtual process operations · supervised mode</p></div></div>
+      <div class="connection" id="connection"><span class="connection-dot"></span><span id="connection-text">CONNECTING TO PLC-01</span><span class="last-update" id="last-update">--</span></div>
+    </header>
+
+    <div class="offline-banner" id="offline-banner" hidden>PLC-01 is not responding. Controls are locked until the local Modbus connection returns.</div>
+
+    <main>
+      <div class="two-column-layout">
+        <section class="process-column">
+          <section class="overview-head">
+            <div><p class="eyebrow">ASSET STATUS / LIVE TELEMETRY</p><h2>Process Unit <em>M-01</em></h2><p class="subtle">Generic motor and rotating process load · Asset class: virtual</p></div>
+            <div class="state-badge stopped" id="state-badge"><span class="state-light"></span><span id="state-label">STOPPED</span><small>PROCESS STATE</small></div>
+          </section>
+          <section class="metrics" aria-label="Live process values">
+            <article class="metric metric-primary"><div class="metric-label"><span class="metric-icon">RPM</span><span>Actual speed</span></div><strong id="rpm">--</strong><div class="metric-foot"><span>Target</span> <b id="target">--</b> RPM</div></article>
+            <article class="metric"><div class="metric-label"><span class="metric-icon temp">TMP</span><span>Temperature</span></div><strong id="temperature">--</strong><div class="metric-foot">°C <span class="range-note">process reading</span></div></article>
+            <article class="metric"><div class="metric-label"><span class="metric-icon pressure">PRS</span><span>Pressure</span></div><strong id="pressure">--</strong><div class="metric-foot">bar <span class="range-note">process reading</span></div></article>
+            <article class="metric"><div class="metric-label"><span class="metric-icon power">PWR</span><span>Power draw</span></div><strong id="power">--</strong><div class="metric-foot">kW <span class="range-note">process reading</span></div></article>
+          </section>
+          <section class="panel events-panel"><div class="panel-heading"><div><p class="eyebrow">OPERATIONAL LOG</p><h3>Machine events</h3></div><span class="event-count" id="event-count">0 EVENTS</span></div><div class="event-list" id="event-list"><div class="empty-state">No events recorded yet.</div></div></section>
+        </section>
+
+        <section class="command-column">
+          <aside class="panel command-panel"><div class="panel-heading"><div><p class="eyebrow">PRIMARY CONTROL</p><h3>Operator command</h3></div><span class="lock-mark">LOCAL / SAFE</span></div>
+          <div class="command-status"><span>Current command</span><strong id="command-state">STOPPED</strong></div>
+          <label for="target-input">Target speed <span>0-3000 RPM</span></label>
+          <div class="target-entry"><input id="target-input" type="number" min="0" max="3000" value="1500"><span>RPM</span></div>
+          <input class="range-input" id="target-range" type="range" min="0" max="3000" value="1500" step="50" aria-label="Target speed slider">
+          <div class="command-buttons"><button class="start-button" data-action="start"><span>▶</span> START MOTOR</button><button class="stop-button" data-action="stop"><span>■</span> STOP MOTOR</button></div>
+          <button class="apply-button" id="apply-setpoint">APPLY TARGET RPM</button>
+          <p class="control-note" id="command-feedback">Commands are sent to PLC-01 over local Modbus TCP.</p>
+          </aside>
+          <section class="panel test-panel"><div class="panel-heading"><div><p class="eyebrow">CONTROLLED INJECTION</p><h3>Test event generator</h3></div><span class="test-tag">LAB ONLY</span></div><p class="subtle">Generate a bounded abnormal condition for defensive detection validation.</p><label for="event-type">Scenario</label><select id="event-type"><option value="rpm_deviation">Sudden RPM deviation</option><option value="temperature_increase">Temperature increase</option><option value="pressure_spike">Pressure spike</option><option value="sensor_inconsistency">Sensor inconsistency</option></select><div class="event-input-row"><label for="event-value">Value</label><input id="event-value" type="number" value="1800"><button id="event-button">INJECT EVENT</button></div><p class="control-note" id="event-feedback">Simulation-only. Every injection is logged.</p></section>
+        </section>
+      </div>
+    </main>
+    <footer><span>CHEM-SHIELD VIRTUAL MACHINE · V1.2.0</span><span>DEFENSIVE RESEARCH BUILD · LOOPBACK ONLY</span></footer>
+  </div>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
