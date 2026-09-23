@@ -1,9 +1,9 @@
 const $ = (id) => document.getElementById(id);
 let connected = false;
 const trendHistory = [];
-const trendLimit = 30;
+const trendLimit = 4;
+let sequenceCounter = 0;
 let selectedFocus = 'temperature';
-let selectedStep = 'mixer';
 
 const focusConfig = {
   temperature: {label: 'TEMPERATURE', unit: '°C', value: (state) => state.temperature, target: () => '80.0 °C'},
@@ -27,6 +27,7 @@ function updateFocus(state) {
 
 function recordTrend(state) {
   trendHistory.push({
+    sequence: ++sequenceCounter,
     time: new Date(),
     rpm: state.rpm,
     temperature: state.temperature,
@@ -37,7 +38,7 @@ function recordTrend(state) {
   $('trend-window').textContent = `${trendHistory.length} RECORD${trendHistory.length === 1 ? '' : 'S'}`;
   $('sequence-list').innerHTML = trendHistory.map((sample, index) => `
     <article class="sequence-record ${index === trendHistory.length - 1 ? 'latest-record' : ''}">
-      <span class="sequence-time"><span class="unit-tag">M-01</span><b>${String(index + 1).padStart(2, '0')}</b><small>${sample.time.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'})}</small></span>
+      <span class="sequence-time"><span class="unit-tag">M-01</span><b>${String(sample.sequence).padStart(3, '0')}</b><small>${sample.time.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'})}</small></span>
       <strong>${Math.round(sample.rpm)} <small>RPM</small></strong>
       <strong>${sample.temperature.toFixed(1)} <small>°C</small></strong>
       <strong>${sample.pressure.toFixed(2)} <small>bar</small></strong>
@@ -54,20 +55,27 @@ function setConnection(online) {
   document.querySelectorAll('[data-action], #apply-setpoint, #event-button').forEach((button) => { button.disabled = !online; });
 }
 
+function setNetworkStatus(connection) {
+  const status = $('network-status');
+  if (!status) return;
+  const state = connection.status || 'DISCONNECTED';
+  status.className = `network-status ${state === 'CONNECTED' ? 'connected' : state === 'CONNECTING' ? 'connecting' : state === 'CONNECTION ERROR' ? 'error' : ''}`;
+  $('network-status-label').textContent = state;
+  $('network-feedback').textContent = connection.error || 'Live process data source';
+  if (connection.host) $('device-ip').value = connection.host;
+  if (connection.port) $('device-port').value = connection.port;
+  if (connection.name) $('device-name').value = connection.name;
+}
+
 function setState(state) {
   const running = state.motor_status === 'RUNNING';
   $('state-label').textContent = state.motor_status;
   $('command-state').textContent = state.motor_status;
   $('state-badge').className = `state-badge ${running ? 'running' : state.motor_status === 'PAUSED' ? 'paused' : 'stopped'}`;
-  $('mixer-status').textContent = state.motor_status;
-  $('heater-status').textContent = running ? 'HEATING' : state.motor_status === 'PAUSED' ? 'HOLD' : 'STANDBY';
-  $('pressurizer-status').textContent = running ? 'STABLE' : state.motor_status === 'PAUSED' ? 'HOLD' : 'STABLE';
-  $('cooler-status').textContent = running ? 'ACTIVE' : 'STANDBY';
-  $('output-status').textContent = running ? 'FLOWING' : state.motor_status === 'PAUSED' ? 'HOLD' : 'READY';
   $('target-input').value = Math.round(state.target_rpm);
   $('target-range').value = Math.round(state.target_rpm);
   updateFocus(state);
-  recordTrend(state);
+  if (state.motor_status !== 'PAUSED') recordTrend(state);
 }
 
 function renderEvents(events) {
@@ -94,20 +102,22 @@ async function getJson(url, options) {
 
 async function refresh() {
   try {
-    const [state, events] = await Promise.all([getJson('/api/state'), getJson('/api/events')]);
+    const [state, events, connection] = await Promise.all([getJson('/api/state'), getJson('/api/events'), getJson('/api/connection')]);
     setConnection(true); setState(state); renderEvents(events);
+    setNetworkStatus(connection);
     $('last-update').textContent = `UPDATED ${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'})}`;
   } catch (error) {
-    setConnection(false); console.warn(error);
+    setConnection(false); setNetworkStatus({status: 'CONNECTION ERROR', error: error.message}); console.warn(error);
   }
 }
 
 async function sendCommand(action) {
   const feedback = $('command-feedback');
-  feedback.textContent = action === 'setpoint' ? 'Applying target speed...' : `${action === 'start' ? 'Starting' : 'Stopping'} motor...`;
+  const actionLabel = action === 'start' ? 'Starting' : action === 'pause' ? 'Pausing' : 'Stopping';
+  feedback.textContent = action === 'setpoint' ? 'Applying target speed...' : `${actionLabel} motor...`;
   try {
     await getJson('/api/control', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action, target_rpm:$('target-input').value})});
-    feedback.textContent = action === 'setpoint' ? 'Target RPM applied to PLC-01.' : `Motor ${action === 'start' ? 'start' : 'stop'} command sent to PLC-01.`;
+    feedback.textContent = action === 'setpoint' ? 'Target RPM applied to PLC-01.' : `Motor ${action === 'start' ? 'start' : action === 'pause' ? 'pause' : 'stop'} command sent to PLC-01.`;
     await refresh();
     if (action !== 'setpoint') {
       await new Promise((resolve) => setTimeout(resolve, 650));
@@ -122,10 +132,6 @@ document.querySelectorAll('[data-focus]').forEach((button) => button.addEventLis
   document.querySelectorAll('[data-focus]').forEach((item) => item.classList.toggle('selected', item === button));
   refresh();
 }));
-document.querySelectorAll('[data-step]').forEach((button) => button.addEventListener('click', () => {
-  selectedStep = button.dataset.step;
-  document.querySelectorAll('[data-step]').forEach((item) => item.classList.toggle('selected', item === button));
-}));
 $('apply-setpoint').addEventListener('click', () => sendCommand('setpoint'));
 $('target-range').addEventListener('input', (event) => { $('target-input').value = event.target.value; });
 $('target-input').addEventListener('input', (event) => { $('target-range').value = Math.max(0, Math.min(3000, event.target.value)); });
@@ -138,4 +144,19 @@ $('event-button').addEventListener('click', async () => {
   button.disabled = !connected;
 });
 
-setConnection(false); refresh(); setInterval(refresh, 1000);
+async function changeConnection(action) {
+  const buttons = document.querySelectorAll('.network-actions button');
+  buttons.forEach((button) => { button.disabled = true; });
+  setNetworkStatus({status: 'CONNECTING', error: 'Applying device configuration...'});
+  try {
+    const connection = await getJson('/api/connection', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action, host:$('device-ip').value, port:$('device-port').value, name:$('device-name').value})});
+    setNetworkStatus(connection); await refresh();
+  } catch (error) { setNetworkStatus({status:'CONNECTION ERROR', error:error.message}); }
+  buttons.forEach((button) => { button.disabled = false; });
+}
+
+$('connect-device').addEventListener('click', () => changeConnection('connect'));
+$('disconnect-device').addEventListener('click', () => changeConnection('disconnect'));
+$('reconnect-device').addEventListener('click', () => changeConnection('reconnect'));
+
+setConnection(false); setNetworkStatus({status:'DISCONNECTED', error:'Not connected'}); refresh(); setInterval(refresh, 1000);

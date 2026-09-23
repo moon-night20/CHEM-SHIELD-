@@ -14,15 +14,16 @@
     </header>
 
     <main class="fixed-dashboard">
+      <section class="network-strip panel" aria-label="Device connection">
+        <div class="network-title"><p class="eyebrow">REAL DEVICE / COMMUNICATION LAYER</p><strong>DEVICE CONNECTION</strong><span id="network-feedback">Live process data source</span></div>
+        <label>NAME <input id="device-name" type="text" value="PLC-01" maxlength="40"></label>
+        <label>IP ADDRESS <input id="device-ip" type="text" value="127.0.0.1" inputmode="decimal"></label>
+        <label>PORT <input id="device-port" type="number" value="5020" min="1" max="65535"></label>
+        <div class="network-status" id="network-status"><span class="status-dot"></span><span id="network-status-label">DISCONNECTED</span></div>
+        <div class="network-actions"><button id="connect-device">CONNECT</button><button id="disconnect-device">DISCONNECT</button><button id="reconnect-device">RECONNECT</button></div>
+      </section>
       <section class="monitor-panel">
         <div class="monitor-heading"><div><p class="eyebrow">SCADA PROCESS MONITOR / M-01</p><h2>Virtual machine line</h2></div><div class="flow-state"><span class="state-badge stopped" id="state-badge"><span class="state-light"></span><span id="state-label">STOPPED</span></span><span class="trend-window" id="trend-window">0 RECORDS</span></div></div>
-        <nav class="process-line" aria-label="Process steps">
-          <button class="process-step selected" data-step="mixer"><span class="step-index">01</span><strong>MIXER</strong><small id="mixer-status">STOPPED</small></button><i class="process-connector"></i>
-          <button class="process-step" data-step="heater"><span class="step-index">02</span><strong>HEATER</strong><small id="heater-status">STANDBY</small></button><i class="process-connector"></i>
-          <button class="process-step" data-step="pressurizer"><span class="step-index">03</span><strong>PRESSURIZER</strong><small id="pressurizer-status">STABLE</small></button><i class="process-connector"></i>
-          <button class="process-step" data-step="cooler"><span class="step-index">04</span><strong>COOLING</strong><small id="cooler-status">STANDBY</small></button><i class="process-connector"></i>
-          <button class="process-step" data-step="output"><span class="step-index">05</span><strong>OUTPUT</strong><small id="output-status">READY</small></button>
-        </nav>
         <section class="monitor-body">
           <div class="focus-panel"><p class="eyebrow">FOCUSED READOUT</p><div class="focus-tabs"><button class="focus-tab selected" data-focus="temperature">TEMPERATURE</button><button class="focus-tab" data-focus="speed">SPEED</button><button class="focus-tab" data-focus="pressure">PRESSURE</button><button class="focus-tab" data-focus="power">POWER</button></div><div class="focus-value"><span id="focus-label">TEMPERATURE</span><strong id="focus-value">--</strong><small id="focus-unit">°C</small></div><div class="focus-meta"><span>Target <b id="focus-target">--</b></span><span>Status <b id="focus-status">WAITING</b></span></div></div>
           <div class="history-panel"><div class="history-heading"><div><p class="eyebrow">LIVE QUEUE / BOTTOM → TOP</p><h3>Process history</h3></div><span class="history-hint">SCROLL FOR OLDER RECORDS</span></div><div class="history-window" id="history-window"><div class="sequence-list" id="sequence-list"><div class="chart-empty">Waiting for the first one-second process record...</div></div></div></div>

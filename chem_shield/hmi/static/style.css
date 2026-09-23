@@ -62,7 +62,7 @@ body { min-width:0; }
 .topbar { flex:0 0 72px; min-height:72px; }
 .brand-subtitle { display:none; }
 .offline-banner { position:absolute; z-index:3; top:76px; left:clamp(12px,3vw,38px); right:clamp(12px,3vw,38px); margin:0; padding:7px 12px; }
-.fixed-dashboard { flex:1 1 auto; min-height:0; display:grid; grid-template-rows:minmax(0,1fr) auto; gap:14px; padding:14px 0; }
+.fixed-dashboard { flex:1 1 auto; min-height:0; display:grid; grid-template-rows:auto minmax(0,1fr) auto; gap:8px; padding:8px 0; }
 .flow-panel { min-height:0; display:flex; flex-direction:column; border:1px solid var(--line); background:linear-gradient(145deg,rgba(16,30,44,.96),rgba(9,20,31,.96)); box-shadow:var(--shadow); padding:clamp(12px,1.8vh,22px); }
 .flow-heading { flex:0 0 auto; display:flex; justify-content:space-between; align-items:center; padding-bottom:10px; border-bottom:1px solid var(--line); }
 .flow-heading h2 { margin:3px 0 0; font-size:clamp(20px,2.2vw,32px); }
@@ -148,6 +148,11 @@ footer { display:none; }
 }
 
 /* SCADA workstation layer */
+.network-strip { min-height:58px; display:grid; grid-template-columns:minmax(190px,1.2fr) minmax(170px,1fr) minmax(85px,.45fr) auto minmax(300px,1.45fr); gap:10px; align-items:center; padding:8px 12px; border:1px solid var(--panel-line); background:#0d1821; box-shadow:none; }
+.network-title { display:flex; flex-direction:column; gap:3px; min-width:0; }.network-title strong { color:var(--text); font:600 11px 'DM Mono',monospace; }.network-title span { color:var(--dim); font-size:9px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.network-strip label { display:flex; align-items:center; gap:6px; color:var(--muted); font:500 9px 'DM Mono',monospace; white-space:nowrap; }.network-strip input { width:100%; min-width:0; height:30px; padding:6px 7px; color:var(--text); border:1px solid #334956; background:#09151d; outline:0; font:500 11px 'DM Mono',monospace; }.network-strip input:focus { border-color:var(--signal); }
+.network-status { display:flex; align-items:center; gap:7px; color:var(--muted); font:600 9px 'DM Mono',monospace; white-space:nowrap; }.status-dot { width:8px; height:8px; border-radius:50%; background:var(--dim); }.network-status.connected { color:var(--green); }.network-status.connected .status-dot { background:var(--green); box-shadow:0 0 9px var(--green); }.network-status.connecting { color:var(--amber); }.network-status.connecting .status-dot { background:var(--amber); }.network-status.error { color:var(--red); }.network-status.error .status-dot { background:var(--red); box-shadow:0 0 9px var(--red); }
+.network-actions { display:flex; gap:6px; justify-content:flex-end; }.network-actions button { height:30px; padding:0 9px; color:var(--signal); border:1px solid #315d6a; background:#102b35; font:600 9px 'DM Mono',monospace; white-space:nowrap; }.network-actions button:hover { background:#174554; }
 :root { --panel:#0d1821; --panel-line:#2b3d49; --instrument:#10222d; --signal:#59c7d9; }
 .monitor-panel { min-height:0; display:flex; flex-direction:column; border:1px solid var(--panel-line); background:#0a141c; }
 .monitor-heading { flex:0 0 auto; display:flex; justify-content:space-between; align-items:center; padding:12px 18px; border-bottom:1px solid var(--panel-line); background:#0f1d26; }
@@ -178,7 +183,7 @@ footer { display:none; }
 .history-heading h3 { margin:3px 0 0; font-size:13px; }
 .history-hint { color:var(--dim); font:9px 'DM Mono',monospace; }
 .history-window { min-height:0; flex:1; overflow-y:auto; padding:8px 12px; scrollbar-color:#3a6975 #0b151c; }
-.history-window .sequence-list { min-height:100%; justify-content:flex-end; overflow:visible; }
+.history-window .sequence-list { min-height:220px; justify-content:flex-end; overflow:visible; }
 .sequence-record { border-radius:2px; background:#132630; border-color:#355360; box-shadow:none; }
 .sequence-record.latest-record { background:#1b4b59; border-color:#78d4dc; box-shadow:inset 3px 0 var(--signal); }
 .sequence-record:before { left:-5px; width:5px; height:5px; }
@@ -192,7 +197,32 @@ footer { display:none; }
 .motor-actions { gap:8px; }
 .secondary-actions { gap:12px; }
 
+@media (max-height:800px) and (min-width:651px) {
+	.topbar { flex-basis:60px; min-height:60px; }
+	.network-strip { min-height:50px; padding:5px 9px; gap:7px; }
+	.network-strip input,.network-actions button { height:26px; }
+	.fixed-dashboard { gap:6px; padding:6px 0; }
+	.monitor-heading { padding:8px 14px; }
+	.monitor-body { padding:8px; gap:8px; }
+	.focus-panel { padding:10px; }
+	.focus-tabs { margin:8px 0 10px; }
+	.focus-value { padding:12px 6px; }
+	.control-panel { min-height:96px; padding:8px 12px; gap:6px 10px; }
+	.motor-actions button,.test-inline button,.test-inline select,.test-inline input { height:30px; }
+	.target-entry { height:30px; }
+}
+
+@media (min-width:901px) {
+	.network-strip { grid-template-columns:190px 140px minmax(220px,1fr) 110px 120px minmax(300px,1.2fr); }
+	.network-strip label { flex-direction:column; align-items:stretch; gap:3px; }
+}
+
 @media (max-width:900px) {
+	.network-strip { grid-template-columns:1fr 1fr auto; gap:6px; }
+	.network-title { grid-column:1 / -1; flex-direction:row; align-items:center; gap:8px; }
+	.network-title span { margin-left:auto; }
+	.network-actions { grid-column:1 / -1; justify-content:stretch; }
+	.network-actions button { flex:1; }
 	.process-line { padding:8px; }
 	.process-step { padding:7px; grid-template-columns:20px 1fr; column-gap:5px; }
 	.process-step .step-index { width:20px; height:20px; font-size:8px; }

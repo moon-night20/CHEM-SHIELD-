@@ -4,8 +4,7 @@ import argparse
 from datetime import datetime, timezone
 
 from flask import Flask, jsonify, render_template, request
-from pymodbus.client import ModbusTcpClient
-
+from chem_shield.communication.device_connection import DeviceConnection
 from chem_shield.data.store import TelemetryStore
 from chem_shield.events.abnormal_events import write_event
 
@@ -14,15 +13,14 @@ def create_app(plc_host="127.0.0.1", plc_port=5020, database="chem_shield/data/t
     app = Flask(__name__)
     store = TelemetryStore(database)
     paused = False
+    device = DeviceConnection(plc_host, plc_port)
+    try:
+        device.connect()
+    except ConnectionError:
+        pass
 
     def plc_call(action):
-        client = ModbusTcpClient(plc_host, port=plc_port)
-        if not client.connect():
-            raise ConnectionError("PLC is offline")
-        try:
-            return action(client)
-        finally:
-            client.close()
+        return device.call(action)
 
     def read_state(client):
         result = client.read_holding_registers(0, count=8, slave=1)
@@ -46,6 +44,24 @@ def create_app(plc_host="127.0.0.1", plc_port=5020, database="chem_shield/data/t
             return jsonify(plc_call(read_state))
         except (ConnectionError, RuntimeError) as error:
             return jsonify({"error": str(error)}), 503
+
+    @app.get("/api/connection")
+    def connection_status():
+        return jsonify(device.snapshot())
+
+    @app.post("/api/connection")
+    def connection_control():
+        payload = request.get_json(silent=True) or {}
+        action = payload.get("action", "connect")
+        try:
+            if action == "disconnect":
+                return jsonify(device.disconnect())
+            if action in ("connect", "reconnect"):
+                device.configure(payload.get("host", device.host), payload.get("port", device.port), payload.get("name", device.name))
+                return jsonify(device.reconnect() if action == "reconnect" else device.connect())
+            raise ValueError("Action must be connect, disconnect, or reconnect")
+        except (ConnectionError, ValueError) as error:
+            return jsonify({**device.snapshot(), "status": "CONNECTION ERROR", "error": str(error)}), 400
 
     @app.get("/api/telemetry")
     def telemetry():
