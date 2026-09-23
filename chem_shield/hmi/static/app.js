@@ -1,12 +1,35 @@
 const $ = (id) => document.getElementById(id);
 let connected = false;
+const trendHistory = [];
+const trendLimit = 7;
+
+function recordTrend(state) {
+  trendHistory.push({
+    time: new Date(),
+    rpm: state.rpm,
+    temperature: state.temperature,
+    pressure: state.pressure,
+    power: state.power,
+  });
+  if (trendHistory.length > trendLimit) trendHistory.shift();
+  $('trend-window').textContent = `${trendHistory.length} RECORD${trendHistory.length === 1 ? '' : 'S'}`;
+  $('sequence-list').innerHTML = trendHistory.map((sample, index) => `
+    <article class="sequence-record ${index === trendHistory.length - 1 ? 'latest-record' : ''}">
+      <span class="sequence-time"><span class="unit-tag">M-01</span><b>${String(index + 1).padStart(2, '0')}</b><small>${sample.time.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'})}</small></span>
+      <strong>${Math.round(sample.rpm)} <small>RPM</small></strong>
+      <strong>${sample.temperature.toFixed(1)} <small>°C</small></strong>
+      <strong>${sample.pressure.toFixed(2)} <small>bar</small></strong>
+      <strong>${sample.power.toFixed(2)} <small>kW</small></strong>
+    </article>
+  `).join('');
+}
 
 function setConnection(online) {
   connected = online;
   $('connection-text').textContent = online ? 'PLC-01 CONNECTED' : 'PLC-01 OFFLINE';
   $('connection').classList.toggle('offline', !online);
-  $('offline-banner').hidden = online;
-  document.querySelectorAll('.command-buttons button, #apply-setpoint, #event-button').forEach((button) => { button.disabled = !online; });
+  if ($('offline-banner')) $('offline-banner').hidden = online;
+  document.querySelectorAll('[data-action], #apply-setpoint, #event-button').forEach((button) => { button.disabled = !online; });
 }
 
 function setState(state) {
@@ -14,16 +37,13 @@ function setState(state) {
   $('state-label').textContent = state.motor_status;
   $('command-state').textContent = state.motor_status;
   $('state-badge').className = `state-badge ${running ? 'running' : 'stopped'}`;
-  $('rpm').textContent = Math.round(state.rpm);
-  $('target').textContent = Math.round(state.target_rpm);
-  $('temperature').textContent = state.temperature.toFixed(1);
-  $('pressure').textContent = state.pressure.toFixed(2);
-  $('power').textContent = state.power.toFixed(2);
   $('target-input').value = Math.round(state.target_rpm);
   $('target-range').value = Math.round(state.target_rpm);
+  recordTrend(state);
 }
 
 function renderEvents(events) {
+  if (!$('event-count') || !$('event-list')) return;
   $('event-count').textContent = `${events.length} EVENT${events.length === 1 ? '' : 'S'}`;
   if (!events.length) {
     $('event-list').innerHTML = '<div class="empty-state">No events recorded yet.</div>';
@@ -61,6 +81,10 @@ async function sendCommand(action) {
     await getJson('/api/control', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action, target_rpm:$('target-input').value})});
     feedback.textContent = action === 'setpoint' ? 'Target RPM applied to PLC-01.' : `Motor ${action === 'start' ? 'start' : 'stop'} command sent to PLC-01.`;
     await refresh();
+    if (action !== 'setpoint') {
+      await new Promise((resolve) => setTimeout(resolve, 650));
+      await refresh();
+    }
   } catch (error) { feedback.textContent = `Command failed: ${error.message}`; $('last-update').textContent = 'COMMAND FAILED'; }
 }
 
