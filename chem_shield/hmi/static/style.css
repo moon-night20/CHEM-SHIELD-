@@ -58,11 +58,11 @@ footer { display:flex; justify-content:space-between; padding:17px 0 28px; borde
 /* Fixed operator console: the queue owns the upper viewport and controls stay docked below it. */
 html,body { width:100%; height:100%; overflow:hidden; }
 body { min-width:0; }
-.app-shell { width:100%; max-width:none; height:100vh; min-height:420px; padding:0 clamp(12px,3vw,38px); display:flex; flex-direction:column; }
+.app-shell { width:100%; max-width:none; height:100vh; min-height:420px; padding:0 clamp(18px,4vw,58px); display:flex; flex-direction:column; }
 .topbar { flex:0 0 72px; min-height:72px; }
 .brand-subtitle { display:none; }
 .offline-banner { position:absolute; z-index:3; top:76px; left:clamp(12px,3vw,38px); right:clamp(12px,3vw,38px); margin:0; padding:7px 12px; }
-.fixed-dashboard { flex:1 1 auto; min-height:0; display:grid; grid-template-rows:minmax(0,1fr) auto; gap:12px; padding:12px 0; }
+.fixed-dashboard { flex:1 1 auto; min-height:0; display:grid; grid-template-rows:minmax(0,1fr) auto; gap:14px; padding:14px 0; }
 .flow-panel { min-height:0; display:flex; flex-direction:column; border:1px solid var(--line); background:linear-gradient(145deg,rgba(16,30,44,.96),rgba(9,20,31,.96)); box-shadow:var(--shadow); padding:clamp(12px,1.8vh,22px); }
 .flow-heading { flex:0 0 auto; display:flex; justify-content:space-between; align-items:center; padding-bottom:10px; border-bottom:1px solid var(--line); }
 .flow-heading h2 { margin:3px 0 0; font-size:clamp(20px,2.2vw,32px); }
@@ -82,16 +82,22 @@ body { min-width:0; }
 .sequence-record strong { font-size:clamp(11px,1.25vw,15px); }
 .sequence-time b { width:24px; height:24px; }
 .chart-empty { height:100%; }
-.control-panel { flex:0 0 auto; min-height:78px; padding:10px 12px; display:grid; grid-template-columns:minmax(108px,.75fr) minmax(180px,1.25fr) minmax(100px,.8fr) minmax(100px,.8fr) minmax(105px,.85fr) minmax(250px,2fr) minmax(95px,.7fr); gap:8px; align-items:center; }
-.control-title { min-width:0; display:flex; flex-direction:column; gap:4px; }
+.control-panel { flex:0 0 auto; min-height:126px; padding:14px 18px; display:grid; grid-template-columns:minmax(120px,.8fr) minmax(220px,1.25fr) minmax(250px,1.6fr); grid-template-rows:1fr 1fr; gap:10px 16px; align-items:center; position:relative; }
+.control-title { min-width:0; grid-column:1; grid-row:1; display:flex; flex-direction:column; gap:4px; }
 .control-title strong { color:var(--green); font:600 13px 'DM Mono',monospace; }
 .control-note { min-width:0; margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--dim); font-size:9px; }
-.target-inline,.test-inline { min-width:0; display:flex; align-items:center; gap:6px; }
+.target-inline { min-width:0; grid-column:2; grid-row:1; display:flex; align-items:center; gap:6px; }
+.test-inline { min-width:0; display:flex; align-items:center; gap:6px; }
 .target-inline label,.test-inline label { color:var(--muted); font:600 9px 'DM Mono',monospace; }
 .target-entry { min-width:72px; height:34px; }
 .target-entry input { padding:7px; font-size:14px; min-width:0; }
 .target-entry span { padding-right:7px; font-size:9px; }
 .range-input { min-width:45px; margin:0; }
+.motor-actions { grid-column:3; grid-row:1; display:flex; gap:14px; min-width:0; }
+.motor-actions button { flex:1; min-width:0; height:42px; padding:8px 12px; white-space:nowrap; }
+.secondary-actions { grid-column:1 / -1; grid-row:2; display:flex; align-items:center; gap:14px; min-width:0; }
+.secondary-actions .apply-button { flex:0 0 190px; }
+.control-panel > #event-feedback { position:absolute; right:18px; bottom:5px; max-width:220px; }
 .control-panel > button { min-width:0; height:36px; padding:7px 5px; white-space:nowrap; }
 .control-panel .apply-button { width:auto; margin:0; }
 .test-inline select,.test-inline input { min-width:0; height:34px; border:1px solid var(--line-bright); color:var(--text); background:#08131e; padding:7px; outline:0; font:500 9px 'DM Mono',monospace; }
@@ -106,8 +112,11 @@ footer { display:none; }
 	h1 { font-size:15px; }
 	.fixed-dashboard { gap:8px; padding:8px 0; }
 	.flow-track { grid-template-columns:25px minmax(0,1fr); gap:7px; }
-	.control-panel { grid-template-columns:minmax(78px,.7fr) minmax(135px,1.2fr) repeat(3,minmax(74px,.75fr)) minmax(190px,1.8fr) minmax(70px,.6fr); gap:5px; padding:7px; }
-	.control-panel > button { font-size:8px; }
+	.control-panel { min-height:116px; grid-template-columns:minmax(85px,.7fr) minmax(145px,1.2fr) minmax(190px,1.7fr); gap:7px; padding:9px; }
+	.motor-actions { gap:8px; }
+	.motor-actions button { font-size:8px; }
+	.secondary-actions { gap:8px; }
+	.secondary-actions .apply-button { flex-basis:130px; }
 	.test-inline { gap:3px; }
 	.test-inline input { width:42px; }
 	.test-inline button { min-width:68px; font-size:8px; }
@@ -124,12 +133,15 @@ footer { display:none; }
 	.sequence-record strong small { font-size:7px; }
 	.sequence-time { gap:3px; font-size:8px; }
 	.sequence-time b { width:18px; height:18px; }
-	.control-panel { grid-template-columns:56px minmax(82px,1fr) repeat(3,minmax(54px,.75fr)) minmax(110px,1.5fr) 44px; gap:3px; padding:5px; }
+	.control-panel { min-height:100px; grid-template-columns:52px minmax(80px,1fr) minmax(105px,1.4fr); gap:4px; padding:6px; }
 	.control-title .control-note,.target-inline label,.test-inline label { display:none; }
 	.target-entry { min-width:50px; height:29px; }
 	.target-entry input { font-size:11px; padding:5px; }
 	.target-entry span { display:none; }
-	.control-panel > button,.test-inline button,.test-inline select,.test-inline input { height:29px; font-size:7px; }
+	.motor-actions { gap:4px; }
+	.motor-actions button,.test-inline button,.test-inline select,.test-inline input { height:29px; font-size:7px; }
+	.secondary-actions { gap:4px; }
+	.secondary-actions .apply-button { flex-basis:82px; }
 	.test-inline input { width:28px; padding:3px; }
 	.test-inline button { min-width:44px; }
 	.control-panel > .control-note { font-size:7px; }
