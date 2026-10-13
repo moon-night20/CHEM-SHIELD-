@@ -37,15 +37,22 @@ python3 -m venv .venv
 python -m pip install -r requirements.txt
 ```
 
-Open three terminals from the repository root (`vs try`):
+To run the machine, open three terminals from the repository root and run one
+command in each terminal:
 
 ```bash
-python -m chem_shield.plc.modbus_plc
-python -m chem_shield.process.main
-python -m chem_shield.hmi.app
+chem_shield/.venv/bin/python -m chem_shield.plc.modbus_plc --host 127.0.0.1 --port 15020
 ```
 
-Open `http://127.0.0.1:5000` (or `http://127.0.0.1:5050` if port 5000 is busy).
+```bash
+chem_shield/.venv/bin/python -m chem_shield.process.main --host 127.0.0.1 --port 15020 --database chem_shield/data/telemetry.db
+```
+
+```bash
+chem_shield/.venv/bin/python -m chem_shield.hmi.app --host 127.0.0.1 --port 15000 --plc-port 15020 --database chem_shield/data/telemetry.db
+```
+
+Then open `http://127.0.0.1:15000`.
 Press START and watch the RPM ramp toward the
 target. STOP demonstrates the gradual coast-down and cooling response. The
 TEST MODE controls generate simulation-only ground-truth events.
@@ -85,3 +92,9 @@ python -m unittest discover -s chem_shield/tests -v
 
 All components are simulation-only and should remain bound to `127.0.0.1` for
 this academic prototype.
+
+
+We are using pip version 21.2.4; however, version 26.0.1 is available.
+You should consider upgrading via the '/Users/moonlit-night/Desktop/CHEM-SHIELD-/chem_shield/.venv/bin/python -m pip install --upgrade pip' command.
+
+
