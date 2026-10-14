@@ -1,6 +1,9 @@
 # CHEM-SHIELD Part 2 / 3: passive network and OT security
 
-This folder is intentionally separate from the physical OT process model in the main Part 1 project. It is a passive, simulation-first analysis layer for network telemetry and Modbus-style traffic using sanitized fixtures.
+This folder is intentionally separate from the physical OT process model in
+Part 1. It is a passive, simulation-first analysis layer for network telemetry
+and Modbus-style traffic using sanitized fixtures. Publishing is an explicit
+opt-in and is limited to the Part 1 loopback HMI.
 
 ## Scope and constraints
 
@@ -16,7 +19,16 @@ The main project keeps its physical telemetry model in:
 - `chem_shield_p1/data/store.py` — SQLite schema for physical telemetry and common events.
 - `chem_shield_p1/README.md` — documented PLC/register contract and simulation-only scope.
 
-This Part 2 / 3 code does not modify those contracts. It reads fixture data and emits normalized events for offline analysis.
+This Part 2 code does not modify those contracts. It reads fixture data and
+emits normalized events for offline analysis or optional local publication.
+
+## Data flow
+
+P2 replays sanitized fixture records, normalizes them, scores them with
+`NetworkIsolationForest`, maps the simulated target to `PLC-01`, and converts
+them to Part 4 `event_type: "network"` events. With `--publish`, the shared
+publisher posts these events to the P1 HMI; it does not open network captures
+or connect to a PLC.
 
 ## Completed adapters (fixture-backed and tested)
 
@@ -32,7 +44,7 @@ These adapters normalize events to the common schema:
 ```json
 {
   "event_id": "<stable-sha256-prefix>",
-  "timestamp": "2026-10-10T12:00:00Z",
+  "timestamp": "2026-10-14T10:00:00Z",
   "source": "zeek",
   "asset_id": "10.10.10.5",
   "event_type": "connection",
@@ -74,58 +86,41 @@ python3 -m chem_shield_p2.replay_events \
 From the repository root:
 
 ```bash
-python3 -m unittest discover -s chem_shield_p2/tests -v
+.venv/bin/python -m pytest -q
 ```
 
 ## Part 4 handoff
 
-The replay/adapters remain offline and do not POST events automatically. A
-consumer may submit adapter output to the Part 1 HMI's
-`POST /api/risk/events` endpoint. The adapter's event `source` is sufficient
-for network-category inference, and its original connection/Modbus evidence is
-retained. Fixture adapter events have no `anomaly_score`, so they
-are stored as `UNASSESSED`; do not invent scores. Submit a score from the
-separate network-flow model only when it has actually scored the matching record.
-See [Part 4's input contract](../chem_shield_p4/correlation/README.md).
+Raw adapter output retains source-specific event types such as `connection`
+and does not itself satisfy P4's scored-event contract. When `--publish` is
+enabled, P2 scores each normalized record, converts its P4 `event_type` to
+`network`, adds a bounded `anomaly_score`, and posts it through the shared
+publisher. `config.example.json` maps fixture endpoint identities to the
+simulated asset `PLC-01`; the existing adapter type and evidence remain
+available to P4. See [Part 4's input contract](../chem_shield_p4/correlation/README.md).
 
-## Part 3: separate network anomaly model
+## Fixture-trained network model
 
-The model in `network_isolation_forest.py` is intentionally separate from the Part 1 physical ML or telemetry model. It trains only on normal baseline network traffic and evaluates on a held-out set containing both normal and abnormal scenarios.
+`NetworkIsolationForest` trains on the normal rows in
+`fixtures/network_baseline.json`. On the first publishing run, P2 trains the
+model, saves it under `chem_shield_p2/models/`, and reloads that artifact.
+Subsequent runs reuse the saved model. The generated Joblib file is ignored by
+Git; remove it to retrain from the checked-in baseline.
 
-Important: these anomaly scores are not probability-of-attack values. They are relative deviation scores that can help prioritise review.
-
-To reproduce the network-model check:
+Run offline replay, or opt in to scoring and loopback publishing:
 
 ```bash
-python3 - <<'PY'
-import json
-from pathlib import Path
-from chem_shield_p2.network_isolation_forest import NetworkIsolationForest
+python3 -m chem_shield_p2.replay_events \
+  --input chem_shield_p2/fixtures/sample_network_events.json --pretty
 
-root = Path('chem_shield_p2/fixtures')
-baseline = json.loads((root / 'network_baseline.json').read_text())
-heldout = json.loads((root / 'network_holdout.json').read_text())
-
-def vectorize(row):
-    state_map = {'established': 1, 'new': 2, 'S0': 0, 'REJ': 3}
-    op_map = {'read_holding_registers': 1, 'read_coils': 2, 'read_input_registers': 3, 'write_single_coil': 4, 'write_single_register': 5, 'write_multiple_registers': 6, 'read_write_multiple_registers': 7}
-    return [
-        float(row['duration']),
-        float(row['packets']),
-        float(row['bytes']),
-        float(row['dst_port']),
-        float(state_map.get(row.get('connection_state'), 0)),
-        float(row['modbus_function_code']),
-        float(op_map.get(row.get('modbus_operation'), 0)),
-        float(row['approved_client']),
-    ]
-
-normal = [vectorize(item) for item in heldout if item['label'] == 'normal']
-attack = [vectorize(item) for item in heldout if item['label'] == 'attack']
-model = NetworkIsolationForest(n_estimators=32, max_depth=6, random_seed=7).fit([vectorize(item) for item in baseline])
-print({'normal_mean': sum(model.score_samples(normal)) / len(normal), 'attack_mean': sum(model.score_samples(attack)) / len(attack)})
-PY
+python3 -m chem_shield_p2.replay_events \
+  --input chem_shield_p2/fixtures/sample_network_events.json \
+  --publish --hmi-url http://127.0.0.1:15000/api/risk/events
 ```
+
+Scores are relative anomaly indicators in `[0, 1]`, not attack probabilities.
+The publisher reports HMI accepted/rejected counts and retries transient local
+failures; detector execution continues if the HMI is unavailable.
 
 ## Linux-specific dependencies for live tooling
 
@@ -140,7 +135,9 @@ Those dependencies are optional here because the code remains fixture-driven and
 
 ## Output and limitations
 
-- Scripts read JSON/JSONL fixtures offline.
-- No remote endpoints are contacted.
+- Scripts read JSON/JSONL fixtures offline; publication is disabled unless
+  `--publish` is passed.
+- The publisher permits only `http://127.0.0.1` and sends no data to remote
+  endpoints.
 - No unauthorized scans or production OT traffic are generated.
 - This implementation preserves the existing physical process telemetry and Modbus PLC contract by not touching the Part 1 runtime.

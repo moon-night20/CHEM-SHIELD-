@@ -83,8 +83,15 @@ pressure, and power are stored as integer hundredths.
 
 `chem_shield_p1/data/telemetry.db` contains the stable `telemetry` table with timestamp,
 machine ID, PLC ID, motor status, target RPM, RPM, temperature, pressure, and
-power. The `events` table uses the common event format and is ready for later
-network, ML, correlation, and risk components.
+power. P5 may read this telemetry in read-only mode; the existing schema is
+unchanged.
+
+## Data flow
+
+The loopback P1 simulator writes telemetry to SQLite. P2 independently replays
+sanitized network fixtures, and P5 reads telemetry or its synthetic CSV while
+using P3's physical model. Their shared publisher sends only scored events to
+the P1 HMI's Part 4 risk endpoint; P4 correlates and displays incidents.
 
 ## Tests
 
@@ -106,11 +113,12 @@ this academic prototype.
 
 ## Part 4 incident and risk dashboard
 
-The existing HMI also exposes Part 4 correlation/risk endpoints. External
-detectors may submit normalized records to `POST /api/risk/events`; this path
-does not call PLC write functions or alter the existing `telemetry` or `events`
-tables. Risk-specific data uses additive `risk_incidents`, `risk_events`, and
-`risk_ingest_state` tables in the same SQLite file.
+The existing HMI also exposes Part 4 correlation/risk endpoints. P2 and P5 can
+publish scored normalized records to `POST /api/risk/events` using the
+loopback-only shared publisher. This path does not call PLC write functions or
+alter the existing `telemetry` or `events` tables. Risk-specific data uses
+additive `risk_incidents`, `risk_events`, and `risk_ingest_state` tables in the
+same SQLite file.
 
 See [Part 4 correlation and risk documentation](../chem_shield_p4/correlation/README.md)
 for event shapes, score handling, acknowledgement semantics, curl examples, and

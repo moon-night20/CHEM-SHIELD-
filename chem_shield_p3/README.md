@@ -17,10 +17,17 @@ The detector is intentionally limited to simulated motor telemetry and an Isolat
 
 ```text
 OT simulator -> physical telemetry -> feature engineering -> Isolation Forest
-             -> physical ML event -> separate correlation/risk components
+             -> physical ML event -> P5 monitor -> Part 4 correlation/risk
 ```
 
 This module stops after emitting the physical ML event. A physical anomaly is not described as an attack detection.
+
+## Data flow
+
+P3 trains and provides the saved physical model; P5 loads that artifact to score
+its validated telemetry, combines model evidence with its independent rule
+checks, and can publish scored physical events to the loopback P1 HMI. P3's
+standalone scenario runner remains an offline evaluation tool.
 
 ## Synthetic laboratory data
 
@@ -86,7 +93,8 @@ chem_shield_p3/
 └── graphs/
 ```
 
-The historical top-level script names are compatibility entry points. Use `scripts/` for new work.
+Use the maintained scripts under `scripts/`; they are the supported entry
+points.
 
 ## Setup
 
@@ -153,6 +161,8 @@ A representative event is:
 }
 ```
 
+The score shown above is illustrative output shape only, not a measured result.
+
 ## Python API
 
 ```python
@@ -180,25 +190,33 @@ For a newly independent single-observation stream, call `detector.reset_stream()
 
 ## Part 4 handoff
 
-There is no automatic producer-to-HMI connection. To submit a detector result,
-POST the normalized event to Part 1's `POST /api/risk/events` endpoint. Preserve
-the detector's actual `[0,1]` `anomaly_score`; it is not a probability. Convert
-the detector timestamp to an ISO-8601 UTC string if needed. For example:
+P3's standalone runner does not publish directly. P5 is the physical-event
+producer: it loads this model and, when run with `--publish`, adapts scored
+physical events for Part 1's `POST /api/risk/events` endpoint. Preserve the
+detector's actual `[0,1]` `anomaly_score`; it is not a probability. The P5
+configuration maps its local asset identity to the shared `PLC-01` correlation
+asset. An illustrative Part 4 event shape is:
 
 ```json
 {
   "timestamp": "2026-10-14T09:30:04Z",
   "source": "physical_ml",
-  "asset_id": "MOTOR-01",
-  "event_type": "physical_ml_anomaly",
+  "asset_id": "PLC-01",
+  "event_type": "physical",
   "anomaly_score": 0.91,
-  "evidence": {"model": "IsolationForest", "is_anomaly": true}
+  "evidence": {
+    "adapter_event_type": "physical_ml_anomaly",
+    "model": "IsolationForest",
+    "is_anomaly": true
+  }
 }
 ```
 
-Part 4 retains this evidence, classifies the source as physical, and correlates
-it with events for the same asset in its configured time window. The example
-value illustrates the output shape only; it is not a measured result. See
+Use `event_type: "physical"` in the normalized Part 4 event; a detailed
+detector-specific type such as `physical_ml_anomaly` belongs in evidence. Part
+4 retains that evidence and correlates events for the same asset in its
+configured time window. The example score illustrates output shape only; it
+is not a measured result. See
 [Part 4's integration and risk semantics](../chem_shield_p4/correlation/README.md).
 
 ## Controlled evaluation

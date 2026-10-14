@@ -23,19 +23,29 @@ HMI; monitor logic and its tests live here.
   `vibration`. Its score is an anomaly indicator, not a probability. The P5
   sample vibration column is explicitly synthetic. Database telemetry without
   vibration remains available to rule checks but is not ML-scored.
+- `config.example.json` maps the monitor's local machine IDs to the shared
+  Part 4 correlation asset `PLC-01` through `risk_asset_id`.
 
 The physical field mapping is `temperature` (degC), `pressure` (bar), `speed`
 from Part 1's `rpm` (rpm), `operating_state` from `motor_status`, and `asset_id`
 from `machine_id`. Part 1 simulator readings are fictional simulated values.
 
+## Data flow
+
+P1 writes simulated telemetry locally; P5 reads it or a synthetic CSV, applies
+sensor validation and rules, and uses P3's saved model for physical anomaly
+scores. With `--publish`, scored events are adapted by
+`to_part4_correlation_event()` and sent through the shared publisher to the P1
+HMI. Readings that cannot be model-scored (for example, telemetry without
+vibration) remain available to local rule checks and are not published as
+scored risk events.
+
 ## Setup and commands
 
-Install the Part 1 and Part 3 dependencies into the environment used to run the
-repository:
+Install the combined dependencies from the repository root:
 
 ```bash
-python3 -m pip install -r chem_shield_p1/requirements.txt
-python3 -m pip install -r chem_shield_p3/requirements.txt
+.venv/bin/python -m pip install -r requirements.txt
 ```
 
 Run the monitor on Part 5's synthetic CSV:
@@ -45,6 +55,19 @@ python3 -m chem_shield_p5.ot_monitor \
   --csv chem_shield_p5/ot_monitor/samples/abnormal_telemetry.csv \
   --config chem_shield_p5/ot_monitor/config.example.json
 ```
+
+Publish the scored physical events to the loopback Part 1 HMI (start it first
+on `127.0.0.1:15000`):
+
+```bash
+.venv/bin/python -m chem_shield_p5.ot_monitor \
+  --csv chem_shield_p5/ot_monitor/samples/abnormal_telemetry.csv \
+  --config chem_shield_p5/ot_monitor/config.example.json \
+  --publish --hmi-url http://127.0.0.1:15000/api/risk/events
+```
+
+The publisher is opt-in, loopback-only, and reports accepted/rejected counts.
+If the HMI is unavailable, it logs the failure and the monitor still completes.
 
 Read the existing Part 1 SQLite telemetry in read-only mode:
 
@@ -79,11 +102,17 @@ CSV data is synthetic and does not establish real-world accuracy.
 
 ## Configuration and operational safety
 
-`config.example.json` sets default sensor names and units but deliberately
+`config.example.json` sets default sensor names, units, and the risk asset
+mapping, but deliberately
 leaves engineering limits and plausibility ranges unset. Configure those from
 validated equipment specifications and approved operating procedures. Rule
 alerts are deterministic engineering/state checks and remain independent of
 statistical model scores.
+
+Supported rule checks include configured upper/lower bounds, rate-of-change
+limits, fluctuations, state-specific sensor ranges, and speed expectations
+while running or stopped. These are engineering/state checks, not statistical
+model scores; an alert does not suppress or replace a model result.
 
 The monitor validates missing, duplicate, stale, malformed, non-finite, and
 configured-implausible measurements. It does not replace invalid measurements
@@ -100,8 +129,7 @@ those fields.
 ## Tests
 
 ```bash
-python3 -m unittest discover -s chem_shield_p5/ot_monitor/tests -v
-python3 -m unittest discover -s chem_shield_p1/tests -v
+.venv/bin/python -m pytest -q
 ```
 
 Limits, units, state profiles, and severity policies require confirmation by

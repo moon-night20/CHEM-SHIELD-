@@ -14,15 +14,20 @@ older imports working. Existing correlation, physical telemetry, and Part 1
 SQLite tables remain in place.
 
 ```text
-Part 2 network detections and flow scores ─┐
-                                           ├─ POST /api/risk/events -> normalize
-Part 3 physical ML scores ─────────────────┤                         -> correlate
-Part 1/5 OT detections ────────────────────┘                         -> risk engine
-                                                                     -> SQLite + HMI
+P1 simulated telemetry -> P5 validation/rules + P3 physical model ─┐
+P2 fixture replay + network model ─────────────────────────────────┤
+                                                                   └─ shared publisher
+                                                                      -> POST /api/risk/events
+                                                                      -> normalize/correlate/score
+                                                                      -> SQLite + HMI dashboard
 ```
 
-Part 2, Part 3, and Part 5 are not automatically connected as background
-services. A configured producer or operator must submit records to the HMI API.
+## Data flow
+
+P2 and P5 publish only when explicitly run with `--publish`; these are
+foreground fixture/monitor commands, not background services. The publisher is
+restricted to `127.0.0.1`. Part 4 groups events by asset and time at the HMI.
+No detector or Part 4 component actuates equipment or performs mitigation.
 
 ## Event input
 
@@ -34,26 +39,32 @@ Submit one event or `{"events": [...]}` to `POST /api/risk/events`:
   "timestamp": "2026-10-14T09:30:04Z",
   "source": "ot_monitor",
   "asset_id": "PLC-01",
-  "event_type": "temperature_high",
+  "event_type": "physical",
   "severity": "high",
-  "evidence": "Synthetic demonstration only",
+  "evidence": {
+    "adapter_event_type": "temperature_high",
+    "note": "Synthetic demonstration only"
+  },
   "anomaly_score": 0.90,
   "measurements": {"temperature": 92.0, "unit": "degC"}
 }
 ```
 
+The normalized `event_type` must be exactly `"network"` or `"physical"`.
+Producer-specific types such as `temperature_high` belong in evidence.
 `asset_id` may be supplied as `machine_id`. ISO-8601 timestamps are normalized
-to UTC. The event category may be set explicitly using
+to UTC. The event category may also be set explicitly using
 `event_category: "network"` or `"physical"`; otherwise it is inferred from
 recognized source names (`zeek`, `suricata`, `modbus`, `os_security`,
-`network_*`, `ot_*`, `physical_*`, or `plc_*`). The original `event_type`,
-evidence, measurements, severity, and other JSON details are retained.
+`network_*`, `ot_*`, `physical_*`, or `plc_*`). Evidence, measurements,
+severity, and other JSON details are retained.
 
 An optional detector score must be finite and in `[0, 1]`. It is a detector
 score, **not an attack probability**. If a rule event has no score, it is still
 correlated and persisted, but its incident is `UNASSESSED`; the pipeline does
-not manufacture a zero score. Missing modalities in an otherwise scored
-incident continue to contribute zero under the pre-existing Part 4 formula.
+not manufacture a zero score. P2/P5 publishing sends scored events only.
+Missing modalities in an otherwise scored incident continue to contribute
+zero under the pre-existing Part 4 formula.
 That formula does not establish whether a detector/source is healthy; the
 input status is reported separately.
 
@@ -107,10 +118,10 @@ use sanitized fixtures only; do not expose it to production networks.
 
 ## Run the local HMI and send a synthetic example
 
-From the repository root, use the Part 1 virtual environment:
+From the repository root, use the combined project environment:
 
 ```bash
-chem_shield_p1/.venv/bin/python -m chem_shield_p1.hmi.app \
+.venv/bin/python -m chem_shield_p1.hmi.app \
   --host 127.0.0.1 --port 15000 --plc-port 5020 \
   --database chem_shield_p1/data/telemetry.db
 ```
@@ -121,12 +132,11 @@ a local synthetic event test:
 ```bash
 curl -X POST http://127.0.0.1:15000/api/risk/events \
   -H 'Content-Type: application/json' \
-  -d '{"events":[{"event_id":"demo-net-01","timestamp":"2026-10-14T09:30:00Z","source":"network_model","asset_id":"PLC-01","event_type":"network_anomaly","anomaly_score":0.9,"evidence":"synthetic"},{"event_id":"demo-ot-01","timestamp":"2026-10-14T09:30:04Z","source":"ot_monitor","asset_id":"PLC-01","event_type":"temperature_high","anomaly_score":0.9,"evidence":"synthetic"}]}'
+  -d '{"events":[{"event_id":"demo-net-01","timestamp":"2026-10-14T09:30:00Z","source":"network_model","asset_id":"PLC-01","event_type":"network","anomaly_score":0.9,"evidence":{"fixture":"synthetic"}},{"event_id":"demo-ot-01","timestamp":"2026-10-14T09:30:04Z","source":"ot_monitor","asset_id":"PLC-01","event_type":"physical","anomaly_score":0.9,"evidence":{"fixture":"synthetic"}}]}'
 ```
 
-This illustrative pair produces `0.40*0.9 + 0.60*0.9 = 0.90` and
-`CRITICAL` under the configured experimental defaults. It is not a measured
-result. To acknowledge an incident, use its returned ID:
+The payload scores and timestamps above are illustrative inputs, not measured
+detector results. To acknowledge an incident, use its returned ID:
 
 ```bash
 curl -X POST http://127.0.0.1:15000/api/incidents/INC-ID/acknowledge \
@@ -136,12 +146,7 @@ curl -X POST http://127.0.0.1:15000/api/incidents/INC-ID/acknowledge \
 ## Tests
 
 ```bash
-chem_shield_p1/.venv/bin/python -m unittest discover \
-  -s chem_shield_p4/correlation/tests -v
-chem_shield_p1/.venv/bin/python -m unittest discover \
-  -s chem_shield_p4/risk_engine/tests -v
-chem_shield_p1/.venv/bin/python -m unittest discover \
-  -s chem_shield_p1/hmi/tests -v
+.venv/bin/python -m pytest -q
 ```
 
 Tests cover grouping, score calculation and validation, unscored events,
@@ -156,8 +161,9 @@ persistence; history/detail/acknowledgement API; HMI risk summary, evidence
 register, severity filtering, acknowledgement, and high/critical notification
 dialog.
 
-Not connected automatically: Part 2/3/5 producers do not stream in the
-background; an event producer must POST normalized records. There is no source
-heartbeat contract, source-specific score calibration, authentication, manual
-resolution workflow, or production-device integration. Part 2 flow scores and Part 3/5 process alerts remain distinct from the
-original Part 1 physical model and PLC simulator.
+Connected by explicit CLI invocation: P2's network replay and P5's physical
+monitor use the publisher with `--publish`; they do not stream in the
+background. There is no source heartbeat contract, source-specific score
+calibration, authentication, manual resolution workflow, or production-device
+integration. P5 uses P3's physical model; P2's network model remains a
+separate fixture-trained detector.
