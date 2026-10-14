@@ -15,7 +15,9 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 import pandas as pd
 from chem_shield_p3.src.detector import PhysicalAnomalyDetector
 
+from chem_shield_common.publisher import DEFAULT_HMI_URL, publish_events
 from .event_normalizer import normalize_ot_event, rule_alert_to_event
+from .event_normalizer import to_part4_correlation_event
 from .rule_engine import RuleEngine
 from .sensor_validation import SensorValidator, parse_timestamp
 from .sqlite_adapter import read_telemetry_read_only, persist_ot_events
@@ -39,6 +41,7 @@ class MonitorConfig:
     accepted_sensor_status: List[str]
     validation_severity: Dict[str, str]
     rules: Dict[str, Any]
+    risk_asset_id: Optional[str] = None
     model_anomaly_threshold: float = 0.5
     model_anomaly_severity: str = "medium"
 
@@ -65,6 +68,11 @@ class MonitorConfig:
                 raise ValueError(f"validation_severity.{key} must be one of {sorted(severity_values)}")
         if model_anomaly_severity not in severity_values:
             raise ValueError(f"model_anomaly_severity must be one of {sorted(severity_values)}")
+        risk_asset_id = data.get("risk_asset_id")
+        if risk_asset_id is not None and (
+            not isinstance(risk_asset_id, str) or not risk_asset_id.strip()
+        ):
+            raise ValueError("risk_asset_id must be a non-empty string or null")
 
         numeric_rule_keys = {
             "low", "high", "temperature", "pressure", "speed",
@@ -106,6 +114,7 @@ class MonitorConfig:
             accepted_sensor_status=list(data.get("accepted_sensor_status", ["OK", "GOOD", "NORMAL"])),
             validation_severity=validation_severity,
             rules=rules,
+            risk_asset_id=risk_asset_id,
             model_anomaly_threshold=model_threshold,
             model_anomaly_severity=model_anomaly_severity,
         )
@@ -192,6 +201,8 @@ class OTMonitor:
                     "P3 physical model skipped %d reading(s) without vibration input",
                     len(valid_readings) - len(scorable_readings),
                 )
+            if not scorable_readings:
+                return events
             model_rows = pd.DataFrame([
                 {
                     "timestamp": reading.timestamp.isoformat(),
@@ -205,10 +216,15 @@ class OTMonitor:
             scored = self.model.predict(model_rows)
             if not isinstance(scored, pd.DataFrame):
                 raise RuntimeError("P3 detector returned a single event for a batch")
+            score_by_reading: dict[tuple[str, str], float] = {}
             for reading, result in zip(
                 scorable_readings, scored.to_dict(orient="records")
             ):
-                if result["anomaly_score"] >= self.config.model_anomaly_threshold:
+                score = float(result["anomaly_score"])
+                score_by_reading[
+                    (reading.asset_id, reading.timestamp.isoformat(timespec="seconds"))
+                ] = score
+                if score >= self.config.model_anomaly_threshold:
                     events.append(normalize_ot_event(
                         reading=reading,
                         event_type="process_multivariable_anomaly",
@@ -226,6 +242,12 @@ class OTMonitor:
                             "feature_columns": self.model.feature_columns,
                         },
                     ))
+            for event in events:
+                if event["event_type"] in {"sensor_data_invalid", "sensor_stale"}:
+                    continue
+                key = (event["asset_id"], event["timestamp"])
+                if key in score_by_reading:
+                    event["anomaly_score"] = score_by_reading[key]
         return events
 
     @staticmethod
@@ -272,6 +294,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
     parser.add_argument("--persist", action="store_true", help="Persist alerts through the existing events table adapter")
     parser.add_argument("--output", help="Write normalized event JSON to this path")
+    parser.add_argument(
+        "--publish",
+        action="store_true",
+        help="Publish scored physical events to the loopback Part 1 HMI",
+    )
+    parser.add_argument(
+        "--hmi-url",
+        default=DEFAULT_HMI_URL,
+        help=f"Loopback Part 1 HMI risk endpoint (default: {DEFAULT_HMI_URL})",
+    )
     args = parser.parse_args(argv)
 
     config = _load_config(args.config)
@@ -282,6 +314,23 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         else read_telemetry_read_only(args.database)
     )
     events = OTMonitor(config, model).process(records)
+    if args.publish:
+        publishable = [
+            to_part4_correlation_event(
+                event,
+                event["anomaly_score"],
+                asset_id=config.risk_asset_id,
+            )
+            for event in events
+            if "anomaly_score" in event
+        ]
+        skipped = len(events) - len(publishable)
+        if skipped:
+            logging.getLogger(__name__).warning(
+                "Skipped %d physical event(s) without a P3 anomaly score",
+                skipped,
+            )
+        publish_events(publishable, url=args.hmi_url)
     if args.persist:
         if not args.database:
             parser.error("--persist requires --database")

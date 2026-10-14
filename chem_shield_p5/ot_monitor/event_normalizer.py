@@ -91,17 +91,25 @@ def rule_alert_to_event(reading: ValidatedReading, alert: RuleAlert) -> Dict[str
     )
 
 
-def to_part4_correlation_event(event: Dict[str, Any], anomaly_score: float) -> Dict[str, Any]:
-    """Return the exact four-field event accepted by Part 4's EventValidator."""
+def to_part4_correlation_event(
+    event: Dict[str, Any],
+    anomaly_score: float,
+    asset_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Convert a scored physical event to Part 4's event contract."""
     score = float(anomaly_score)
     if not 0.0 <= score <= 1.0:
         raise ValueError("anomaly_score must be between 0.0 and 1.0")
-    return {
+    result = {
         "timestamp": event["timestamp"],
-        "asset_id": event["asset_id"],
+        "asset_id": asset_id or event["asset_id"],
         "event_type": "physical",
         "anomaly_score": score,
     }
+    for field in ("event_id", "source", "severity", "evidence"):
+        if field in event and event[field] is not None:
+            result[field] = event[field]
+    return result
 
 
 def to_part1_event_record(event: Dict[str, Any]) -> Dict[str, Any]:

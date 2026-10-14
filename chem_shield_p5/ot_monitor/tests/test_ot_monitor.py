@@ -189,8 +189,11 @@ class OTMonitorTests(unittest.TestCase):
         self.assertEqual(event["measurement_origin"], "synthetic_unit_test")
         correlation_event = to_part4_correlation_event(event, 0.7)
         self.assertEqual(
+            {
+                "timestamp", "asset_id", "event_type", "anomaly_score",
+                "event_id", "source", "severity", "evidence",
+            },
             set(correlation_event),
-            {"timestamp", "asset_id", "event_type", "anomaly_score"},
         )
         self.assertEqual(correlation_event["event_type"], "physical")
 

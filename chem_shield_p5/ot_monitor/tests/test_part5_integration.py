@@ -51,7 +51,9 @@ class Part5IntegrationTests(unittest.TestCase):
         self.assertEqual(p1_event["parameter"], "TEMPERATURE-HIGH")
 
         p4_event = to_part4_correlation_event(event, 0.7)
-        self.assertEqual(set(p4_event), {"timestamp", "asset_id", "event_type", "anomaly_score"})
+        self.assertTrue(
+            {"timestamp", "asset_id", "event_type", "anomaly_score"}.issubset(p4_event)
+        )
         self.assertEqual(p4_event["event_type"], "physical")
 
         from chem_shield_p4.correlation.validator import EventValidator

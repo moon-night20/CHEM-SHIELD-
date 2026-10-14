@@ -1,4 +1,5 @@
 {
+  "risk_asset_id": "PLC-01",
   "sensor_names": {
     "temperature": "temperature",
     "pressure": "pressure",
