@@ -5,7 +5,7 @@ from pathlib import Path
 
 from chem_shield_p5.ot_monitor.ot_monitor import MonitorConfig, OTMonitor
 from chem_shield_p1.events.abnormal_events import event_record
-from chem_shield_p5.ot_monitor import PhysicalProcessIsolationForest
+from chem_shield_p3.src.detector import PhysicalAnomalyDetector
 from chem_shield_p5.ot_monitor.event_normalizer import (
     to_part1_event_record,
     to_part4_correlation_event,
@@ -25,8 +25,8 @@ def make_config():
 class Part5IntegrationTests(unittest.TestCase):
     def test_part5_exports_reuse_part1_implementation(self):
         self.assertEqual(
-            PhysicalProcessIsolationForest.__module__,
-            "chem_shield_p5.ot_monitor.ot_anomaly_model",
+            PhysicalAnomalyDetector.__module__,
+            "chem_shield_p3.src.detector",
         )
         self.assertIsNotNone(SensorValidator)
 

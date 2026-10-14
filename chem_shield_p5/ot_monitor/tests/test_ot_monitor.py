@@ -1,5 +1,4 @@
 import json
-import sys
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -7,7 +6,7 @@ from pathlib import Path
 
 from chem_shield_p1.data.store import TelemetryStore
 from chem_shield_p5.ot_monitor.event_normalizer import to_part4_correlation_event
-from chem_shield_p5.ot_monitor.ot_anomaly_model import PhysicalProcessIsolationForest
+from chem_shield_p3.src.detector import PhysicalAnomalyDetector
 from chem_shield_p5.ot_monitor.ot_monitor import MonitorConfig, OTMonitor
 from chem_shield_p5.ot_monitor.sensor_validation import SensorValidator
 from chem_shield_p5.ot_monitor.sqlite_adapter import persist_ot_events, read_telemetry_read_only
@@ -26,6 +25,7 @@ def rows(filename):
                 "temperature": float(row["temperature"]),
                 "pressure": float(row["pressure"]),
                 "speed": float(row["speed"]),
+                "vibration": float(row["vibration"]),
             }
             for row in csv.DictReader(stream)
         ]
@@ -69,6 +69,7 @@ def record(second, temperature=25, pressure=2, speed=500, state="RUNNING", **ext
         "temperature": temperature,
         "pressure": pressure,
         "speed": speed,
+        "vibration": 0.1,
         "operating_state": state,
         "sensor_status": "OK",
         "measurement_origin": "synthetic_unit_test",
@@ -193,21 +194,22 @@ class OTMonitorTests(unittest.TestCase):
         )
         self.assertEqual(correlation_event["event_type"], "physical")
 
-    def test_model_training_evaluation_save_and_load(self):
-        baseline = rows("normal_telemetry.csv")
-        evaluation = rows("abnormal_telemetry.csv")
-        model = PhysicalProcessIsolationForest(n_estimators=32, random_state=9).fit(baseline)
-        metrics = model.evaluate(evaluation)
-        self.assertEqual(set(metrics), {"precision", "recall", "f1", "false_positive_rate", "confusion_matrix"})
-        self.assertGreaterEqual(metrics["precision"], 0)
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "physical-model.joblib"
-            model.save(path)
-            loaded = PhysicalProcessIsolationForest.load(path)
-            self.assertEqual(loaded.metadata["version"], model.metadata["version"])
-            self.assertEqual(len(loaded.score_records(evaluation)), len(evaluation))
-        with self.assertRaisesRegex(ValueError, "not labeled normal"):
-            PhysicalProcessIsolationForest().fit([dict(baseline[0], label="abnormal")])
+    def test_p5_scores_telemetry_with_the_p3_physical_model(self):
+        model_path = ROOT.parents[1] / "chem_shield_p3" / "models" / "isolation_forest.joblib"
+        model = PhysicalAnomalyDetector.load(model_path)
+        events = OTMonitor(
+            config(model_anomaly_threshold=0),
+            model,
+        ).process(rows("abnormal_telemetry.csv"))
+        scored = [
+            event for event in events
+            if event["event_type"] == "process_multivariable_anomaly"
+        ]
+        self.assertTrue(scored)
+        for event in scored:
+            score = event["evidence"]["anomaly_score"]
+            self.assertGreaterEqual(score, 0.0)
+            self.assertLessEqual(score, 1.0)
 
     def test_existing_sqlite_read_and_event_persistence(self):
         with tempfile.TemporaryDirectory() as directory:

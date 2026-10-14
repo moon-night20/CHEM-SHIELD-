@@ -5,17 +5,29 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import logging
 import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
+import pandas as pd
+from chem_shield_p3.src.detector import PhysicalAnomalyDetector
+
 from .event_normalizer import normalize_ot_event, rule_alert_to_event
-from .ot_anomaly_model import PhysicalProcessIsolationForest
 from .rule_engine import RuleEngine
 from .sensor_validation import SensorValidator, parse_timestamp
 from .sqlite_adapter import read_telemetry_read_only, persist_ot_events
+
+
+LOGGER = logging.getLogger(__name__)
+DEFAULT_PHYSICAL_MODEL = (
+    Path(__file__).resolve().parents[2]
+    / "chem_shield_p3"
+    / "models"
+    / "isolation_forest.joblib"
+)
 
 
 @dataclass
@@ -105,7 +117,7 @@ class OTMonitor:
     def __init__(
         self,
         config: MonitorConfig,
-        model: Optional[PhysicalProcessIsolationForest] = None,
+        model: Optional[PhysicalAnomalyDetector] = None,
     ) -> None:
         self.config = config
         self.validator = SensorValidator(
@@ -171,9 +183,31 @@ class OTMonitor:
                 events.append(rule_alert_to_event(reading, alert))
 
         if self.model is not None and valid_readings:
-            model_rows = [reading.raw for reading in valid_readings]
-            scored = self.model.score_records(model_rows)
-            for reading, result in zip(valid_readings, scored):
+            scorable_readings = [
+                reading for reading in valid_readings
+                if "vibration" in reading.measurements
+            ]
+            if len(scorable_readings) != len(valid_readings):
+                LOGGER.warning(
+                    "P3 physical model skipped %d reading(s) without vibration input",
+                    len(valid_readings) - len(scorable_readings),
+                )
+            model_rows = pd.DataFrame([
+                {
+                    "timestamp": reading.timestamp.isoformat(),
+                    "asset_id": reading.asset_id,
+                    "motor_speed": reading.measurements["speed"],
+                    "temperature": reading.measurements["temperature"],
+                    "vibration": reading.measurements["vibration"],
+                }
+                for reading in scorable_readings
+            ])
+            scored = self.model.predict(model_rows)
+            if not isinstance(scored, pd.DataFrame):
+                raise RuntimeError("P3 detector returned a single event for a batch")
+            for reading, result in zip(
+                scorable_readings, scored.to_dict(orient="records")
+            ):
                 if result["anomaly_score"] >= self.config.model_anomaly_threshold:
                     events.append(normalize_ot_event(
                         reading=reading,
@@ -181,15 +215,15 @@ class OTMonitor:
                         severity=self.config.model_anomaly_severity,
                         evidence={
                             "message": "Physical telemetry deviates from the fitted normal baseline",
-                            "detection_method": "isolation_forest",
+                            "detection_method": "P3 PhysicalAnomalyDetector",
                             "anomaly_score": result["anomaly_score"],
                             "score_interpretation": "relative anomaly score; not a probability",
-                            "decision_function": result["decision_function"],
+                            "model_decision_score": result["model_decision_score"],
                         },
                         model={
-                            "name": "PhysicalProcessIsolationForest",
-                            "version": result["model_version"],
-                            "feature_names": self.model.feature_names_,
+                            "name": "PhysicalAnomalyDetector",
+                            "version": self.model.training_metadata.get("artifact_version"),
+                            "feature_columns": self.model.feature_columns,
                         },
                     ))
         return events
@@ -231,13 +265,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     source.add_argument("--csv", help="Read telemetry from CSV")
     source.add_argument("--database", help="Read existing Part 1 SQLite telemetry database in read-only mode")
     parser.add_argument("--config", default=str(root / "config.example.json"))
-    parser.add_argument("--model", help="Optional fitted physical Isolation Forest joblib artifact")
+    parser.add_argument(
+        "--model",
+        default=str(DEFAULT_PHYSICAL_MODEL),
+        help="P3 PhysicalAnomalyDetector artifact (default: chem_shield_p3/models/isolation_forest.joblib)",
+    )
     parser.add_argument("--persist", action="store_true", help="Persist alerts through the existing events table adapter")
     parser.add_argument("--output", help="Write normalized event JSON to this path")
     args = parser.parse_args(argv)
 
     config = _load_config(args.config)
-    model = PhysicalProcessIsolationForest.load(args.model) if args.model else None
+    model = PhysicalAnomalyDetector.load(args.model)
     records = (
         _read_csv(args.csv, config.sensor_names)
         if args.csv

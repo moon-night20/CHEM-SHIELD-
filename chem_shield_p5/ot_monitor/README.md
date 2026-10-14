@@ -17,11 +17,12 @@ HMI; monitor logic and its tests live here.
 - Part 4 correlation accepts timestamp, asset_id, event_type=`physical`, and
   anomaly_score. `to_part4_correlation_event()` maps normalized OT alerts to
   this interface.
-- Part 3 already has `PhysicalAnomalyDetector`, which models motor speed,
-  temperature, and vibration. It is unchanged. It does not model pressure, so
-  the Part 1 OT implementation's separate `PhysicalProcessIsolationForest`
-  models temperature, pressure, speed, changes, and operating state; it does
-  not replace or modify the Part 3 detector.
+- Part 5 uses Part 3's persisted `PhysicalAnomalyDetector` artifact as its only
+  physical ML model. P5 retains its sensor validation and pressure/temperature/
+  speed rule checks; the P3 model consumes `motor_speed`, `temperature`, and
+  `vibration`. Its score is an anomaly indicator, not a probability. The P5
+  sample vibration column is explicitly synthetic. Database telemetry without
+  vibration remains available to rule checks but is not ML-scored.
 
 The physical field mapping is `temperature` (degC), `pressure` (bar), `speed`
 from Part 1's `rpm` (rpm), `operating_state` from `motor_status`, and `asset_id`
@@ -62,23 +63,15 @@ python3 -m chem_shield_p5.ot_monitor \
   --persist
 ```
 
-Train a model on the separate normal baseline and evaluate against the held-out
-normal/abnormal sample:
-
-```bash
-python3 -m chem_shield_p5.ot_monitor.train_model \
-  --baseline chem_shield_p5/ot_monitor/samples/normal_telemetry.csv \
-  --evaluation chem_shield_p5/ot_monitor/samples/abnormal_telemetry.csv \
-  --output /tmp/chem-shield-physical-iforest.joblib
-```
-
-Run inference with that artifact:
+By default, the monitor loads
+`chem_shield_p3/models/isolation_forest.joblib`. An alternate compatible P3
+artifact can be selected with `--model`:
 
 ```bash
 python3 -m chem_shield_p5.ot_monitor \
   --csv chem_shield_p5/ot_monitor/samples/abnormal_telemetry.csv \
   --config chem_shield_p5/ot_monitor/config.example.json \
-  --model /tmp/chem-shield-physical-iforest.joblib
+  --model chem_shield_p3/models/isolation_forest.joblib
 ```
 
 The model reports anomaly rankings, not attack probabilities. The checked-in
@@ -107,7 +100,6 @@ those fields.
 ## Tests
 
 ```bash
-python3 -m unittest discover -s chem_shield_p5/ot_monitor/tests -v
 python3 -m unittest discover -s chem_shield_p5/ot_monitor/tests -v
 python3 -m unittest discover -s chem_shield_p1/tests -v
 ```

@@ -52,6 +52,7 @@ class SensorValidator:
     """Validate configured sensor fields without coercing bad values to normal data."""
 
     REQUIRED_SENSORS = ("temperature", "pressure", "speed")
+    OPTIONAL_SENSORS = ("vibration",)
 
     def __init__(
         self,
@@ -64,6 +65,7 @@ class SensorValidator:
     ) -> None:
         self.sensor_names = {
             **{name: name for name in self.REQUIRED_SENSORS},
+            **{name: name for name in self.OPTIONAL_SENSORS},
             **(sensor_names or {}),
         }
         if any(not isinstance(value, str) or not value.strip() for value in self.sensor_names.values()):
@@ -72,6 +74,7 @@ class SensorValidator:
             "temperature": "degC",
             "pressure": "bar",
             "speed": "rpm",
+            "vibration": "g",
             **(units or {}),
         }
         if any(not isinstance(value, str) or not value.strip() for value in self.units.values()):
@@ -83,7 +86,7 @@ class SensorValidator:
             if not math.isfinite(float(stale_after_seconds)) or stale_after_seconds <= 0:
                 raise ValueError("stale_after_seconds must be a positive finite number")
         for sensor, bounds in self.plausibility_ranges.items():
-            if sensor not in self.REQUIRED_SENSORS or not isinstance(bounds, dict):
+            if sensor not in (*self.REQUIRED_SENSORS, *self.OPTIONAL_SENSORS) or not isinstance(bounds, dict):
                 raise ValueError(f"Invalid plausibility range configuration for {sensor!r}")
             lower, upper = bounds.get("min"), bounds.get("max")
             for name, bound in (("min", lower), ("max", upper)):
@@ -147,10 +150,12 @@ class SensorValidator:
             issues.append(ValidationIssue("sensor_data_invalid", f"Sensor status is not accepted: {sensor_status!r}", field="sensor_status"))
 
         measurements: Dict[str, float] = {}
-        for name in self.REQUIRED_SENSORS:
+        for name in (*self.REQUIRED_SENSORS, *self.OPTIONAL_SENSORS):
             source_name = self.sensor_names[name]
             value = record.get(source_name)
             if value is None:
+                if name in self.OPTIONAL_SENSORS:
+                    continue
                 issues.append(ValidationIssue("sensor_data_invalid", f"Missing required measurement {source_name!r}", field=source_name))
                 continue
             if isinstance(value, bool) or not isinstance(value, (int, float)):

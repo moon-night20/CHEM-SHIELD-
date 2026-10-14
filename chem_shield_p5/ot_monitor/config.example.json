@@ -2,17 +2,20 @@
   "sensor_names": {
     "temperature": "temperature",
     "pressure": "pressure",
-    "speed": "speed"
+    "speed": "speed",
+    "vibration": "vibration"
   },
   "units": {
     "temperature": "degC",
     "pressure": "bar",
-    "speed": "rpm"
+    "speed": "rpm",
+    "vibration": "g"
   },
   "plausibility_ranges": {
     "temperature": {"min": null, "max": null},
     "pressure": {"min": null, "max": null},
-    "speed": {"min": null, "max": null}
+    "speed": {"min": null, "max": null},
+    "vibration": {"min": null, "max": null}
   },
   "stale_after_seconds": null,
   "accepted_sensor_status": ["OK", "GOOD", "NORMAL"],
