@@ -90,15 +90,14 @@ network, ML, correlation, and risk components.
 
 ```bash
 chem_shield_p1/.venv/bin/python -m unittest discover -s chem_shield_p1/tests -v
-PYTHONPATH=chem_shield_p4/correlation \
-  chem_shield_p1/.venv/bin/python -m unittest discover -s chem_shield_p1/ot_monitor/tests -v
+chem_shield_p1/.venv/bin/python -m unittest discover -s chem_shield_p5/ot_monitor/tests -v
 chem_shield_p1/.venv/bin/python -m unittest discover -s chem_shield_p1/hmi/tests -v
 ```
 
 ## Optional OT physical-process monitoring
 
-The separate read-only physical telemetry monitor is documented in
-[ot_monitor/README.md](ot_monitor/README.md). It maps existing `temperature`,
+The separate read-only physical telemetry monitor is maintained in
+[Part 5](../chem_shield_p5/ot_monitor/README.md). It maps existing `temperature`,
 `pressure`, `rpm`, `motor_status`, and `machine_id` fields without changing the
 Part 1 PLC, HMI, or SQLite schema.
 

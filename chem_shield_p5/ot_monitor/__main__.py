@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from typing import Optional, Sequence
 
-from chem_shield_p1.ot_monitor.ot_monitor import main as _monitor_main
+from chem_shield_p5.ot_monitor.ot_monitor import main as _monitor_main
 
 
 DEFAULT_CONFIG = Path(__file__).resolve().parent / "config.example.json"

@@ -1,6 +1,6 @@
-"""Part 5 entry points reusing the Part 1 OT monitor implementation."""
+"""Part 5 read-only physical-process monitoring implementation."""
 
-from chem_shield_p1.ot_monitor.ot_anomaly_model import PhysicalProcessIsolationForest
-from chem_shield_p1.ot_monitor.ot_monitor import MonitorConfig, OTMonitor
+from chem_shield_p5.ot_monitor.ot_anomaly_model import PhysicalProcessIsolationForest
+from chem_shield_p5.ot_monitor.ot_monitor import MonitorConfig, OTMonitor
 
 __all__ = ["MonitorConfig", "OTMonitor", "PhysicalProcessIsolationForest"]

@@ -1,10 +1,8 @@
 # CHEM-SHIELD Part 5 — OT physical-process monitoring
 
-This Part 5 package provides the requested Part 5 folder entry point for the
-read-only OT physical-process monitor. Its implementation is deliberately
-reused from `chem_shield_p1/ot_monitor/` rather than copied into a second,
-independent monitor. This keeps input validation, engineering rules, model
-behavior, and SQLite adaptation consistent.
+This package contains the read-only OT physical-process monitor implementation.
+Part 1 retains the PLC, process simulator, communications, telemetry store, and
+HMI; monitor logic and its tests live here.
 
 ## Existing project contracts
 
@@ -110,7 +108,7 @@ those fields.
 
 ```bash
 python3 -m unittest discover -s chem_shield_p5/ot_monitor/tests -v
-python3 -m unittest discover -s chem_shield_p1/ot_monitor/tests -v
+python3 -m unittest discover -s chem_shield_p5/ot_monitor/tests -v
 python3 -m unittest discover -s chem_shield_p1/tests -v
 ```
 

@@ -6,11 +6,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from chem_shield_p1.data.store import TelemetryStore
-from chem_shield_p1.ot_monitor.event_normalizer import to_part4_correlation_event
-from chem_shield_p1.ot_monitor.ot_anomaly_model import PhysicalProcessIsolationForest
-from chem_shield_p1.ot_monitor.ot_monitor import MonitorConfig, OTMonitor
-from chem_shield_p1.ot_monitor.sensor_validation import SensorValidator
-from chem_shield_p1.ot_monitor.sqlite_adapter import persist_ot_events, read_telemetry_read_only
+from chem_shield_p5.ot_monitor.event_normalizer import to_part4_correlation_event
+from chem_shield_p5.ot_monitor.ot_anomaly_model import PhysicalProcessIsolationForest
+from chem_shield_p5.ot_monitor.ot_monitor import MonitorConfig, OTMonitor
+from chem_shield_p5.ot_monitor.sensor_validation import SensorValidator
+from chem_shield_p5.ot_monitor.sqlite_adapter import persist_ot_events, read_telemetry_read_only
 
 
 ROOT = Path(__file__).resolve().parents[1]

@@ -1,1 +1,54 @@
-../../chem_shield_p1/ot_monitor/config.example.json
+{
+  "sensor_names": {
+    "temperature": "temperature",
+    "pressure": "pressure",
+    "speed": "speed"
+  },
+  "units": {
+    "temperature": "degC",
+    "pressure": "bar",
+    "speed": "rpm"
+  },
+  "plausibility_ranges": {
+    "temperature": {"min": null, "max": null},
+    "pressure": {"min": null, "max": null},
+    "speed": {"min": null, "max": null}
+  },
+  "stale_after_seconds": null,
+  "accepted_sensor_status": ["OK", "GOOD", "NORMAL"],
+  "validation_severity": {
+    "sensor_data_invalid": "high",
+    "sensor_stale": "medium"
+  },
+  "model_anomaly_threshold": 0.5,
+  "model_anomaly_severity": "medium",
+  "rules": {
+    "limits": {
+      "temperature": {"low": null, "high": null, "low_severity": "high", "high_severity": "high"},
+      "pressure": {"low": null, "high": null, "low_severity": "high", "high_severity": "high"},
+      "speed": {"low": null, "high": null, "low_severity": "high", "high_severity": "high"}
+    },
+    "rate_of_change": {
+      "temperature": null,
+      "pressure": null,
+      "speed": null,
+      "severity": "medium"
+    },
+    "fluctuation": {
+      "temperature": null,
+      "pressure": null,
+      "speed": null,
+      "window_samples": 5,
+      "minimum_samples": 3,
+      "severity": "medium"
+    },
+    "state_limits": {},
+    "operating_rules": {
+      "expected_running_states": ["RUNNING"],
+      "stopped_states": ["STOPPED"],
+      "minimum_speed_when_running": null,
+      "maximum_speed_when_stopped": null,
+      "severity": "high"
+    }
+  }
+}
