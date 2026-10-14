@@ -1,0 +1,12 @@
+[
+  {"label": "normal", "duration": 0.10, "packets": 20, "bytes": 1000, "dst_port": 502, "connection_state": "established", "modbus_function_code": 3, "modbus_operation": "read_holding_registers", "approved_client": 1},
+  {"label": "normal", "duration": 0.12, "packets": 24, "bytes": 1200, "dst_port": 502, "connection_state": "established", "modbus_function_code": 3, "modbus_operation": "read_holding_registers", "approved_client": 1},
+  {"label": "normal", "duration": 0.14, "packets": 29, "bytes": 1450, "dst_port": 502, "connection_state": "established", "modbus_function_code": 3, "modbus_operation": "read_holding_registers", "approved_client": 1},
+  {"label": "normal", "duration": 0.15, "packets": 31, "bytes": 1700, "dst_port": 502, "connection_state": "established", "modbus_function_code": 4, "modbus_operation": "read_input_registers", "approved_client": 1},
+  {"label": "normal", "duration": 0.11, "packets": 18, "bytes": 870, "dst_port": 502, "connection_state": "established", "modbus_function_code": 3, "modbus_operation": "read_holding_registers", "approved_client": 1},
+  {"label": "attack", "duration": 3.2, "packets": 4200, "bytes": 360000, "dst_port": 502, "connection_state": "S0", "modbus_function_code": 16, "modbus_operation": "write_multiple_registers", "approved_client": 0},
+  {"label": "attack", "duration": 2.8, "packets": 3800, "bytes": 330000, "dst_port": 502, "connection_state": "S0", "modbus_function_code": 16, "modbus_operation": "write_multiple_registers", "approved_client": 0},
+  {"label": "attack", "duration": 5.4, "packets": 9000, "bytes": 900000, "dst_port": 502, "connection_state": "S0", "modbus_function_code": 6, "modbus_operation": "write_single_register", "approved_client": 0},
+  {"label": "attack", "duration": 1.7, "packets": 1100, "bytes": 98000, "dst_port": 502, "connection_state": "REJ", "modbus_function_code": 23, "modbus_operation": "read_write_multiple_registers", "approved_client": 0},
+  {"label": "attack", "duration": 4.1, "packets": 5200, "bytes": 420000, "dst_port": 502, "connection_state": "S0", "modbus_function_code": 16, "modbus_operation": "write_multiple_registers", "approved_client": 0}
+]

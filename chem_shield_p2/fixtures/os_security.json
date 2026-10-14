@@ -1,0 +1,4 @@
+[
+  {"timestamp": "2026-10-10T12:00:04Z", "hostname": "plc-01", "log_name": "Security", "message": "Successful login by operator", "severity": "low", "result": "success"},
+  {"timestamp": "2026-10-10T12:07:14Z", "hostname": "plc-01", "log_name": "Security", "message": "Remote command execution attempted", "severity": "high", "result": "denied"}
+]

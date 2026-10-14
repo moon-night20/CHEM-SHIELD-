@@ -1,0 +1,4 @@
+[
+  {"timestamp": "2026-10-10T12:00:03Z", "client_ip": "192.168.2.10", "server_ip": "10.10.10.5", "client_port": 50102, "server_port": 502, "function_code": 3, "operation": "read_holding_registers", "register_address": 0, "register_count": 10, "approved_client": true, "connection_status": "online", "response_time_ms": 14, "severity": "low"},
+  {"timestamp": "2026-10-10T12:05:03Z", "client_ip": "198.51.100.17", "server_ip": "10.10.10.5", "client_port": 40000, "server_port": 502, "function_code": 16, "operation": "write_multiple_registers", "register_address": 400, "register_count": 4, "approved_client": false, "connection_status": "suspicious", "response_time_ms": 26, "severity": "critical"}
+]
