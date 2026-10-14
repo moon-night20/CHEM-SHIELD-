@@ -8,10 +8,10 @@ attack, or automatically remediate anything.
 ## Compatibility and architecture
 
 The canonical risk implementation is
-[`../risk_engine/`](../risk_engine/). The former
-[`../risk engin/`](../risk%20engin/) modules and
-[`risk_engine.py`](./risk_engine.py) are compatibility paths. Existing
-correlation, physical telemetry, and Part 1 SQLite tables remain in place.
+[`../risk_engine/`](../risk_engine/). The thin compatibility wrapper in
+[`risk_engine.py`](./risk_engine.py) re-exports the canonical package and keeps
+older imports working. Existing correlation, physical telemetry, and Part 1
+SQLite tables remain in place.
 
 ```text
 Part 2 network detections and flow scores ─┐
@@ -139,8 +139,6 @@ curl -X POST http://127.0.0.1:15000/api/incidents/INC-ID/acknowledge \
 chem_shield_p1/.venv/bin/python -m unittest discover \
   -s chem_shield_p4/correlation/tests -v
 chem_shield_p1/.venv/bin/python -m unittest discover \
-  -s 'chem_shield_p4/risk engin/tests' -v
-chem_shield_p1/.venv/bin/python -m unittest discover \
   -s chem_shield_p4/risk_engine/tests -v
 chem_shield_p1/.venv/bin/python -m unittest discover \
   -s chem_shield_p1/hmi/tests -v
@@ -152,10 +150,11 @@ routes with a deliberately disconnected loopback PLC.
 
 ## Integration status and limitations
 
-Completed: canonical risk engine; compatibility wrappers; event normalization
-and correlation; deduplication; additive SQLite incident/event persistence;
-history/detail/acknowledgement API; HMI risk summary, evidence register,
-severity filtering, acknowledgement, and high/critical notification dialog.
+Completed: canonical risk engine; compatibility re-export; event
+normalization and correlation; deduplication; additive SQLite incident/event
+persistence; history/detail/acknowledgement API; HMI risk summary, evidence
+register, severity filtering, acknowledgement, and high/critical notification
+dialog.
 
 Not connected automatically: Part 2/3/5 producers do not stream in the
 background; an event producer must POST normalized records. There is no source

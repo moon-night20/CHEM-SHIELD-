@@ -1,5 +1,8 @@
 # CHEM-SHIELD AI/ML: Physical-Process Anomaly Detection
 
+The earlier `ML_README.md` content has been merged here; the separate file was
+removed to keep the maintained documentation in a single place.
+
 ## Purpose and scope
 
 This directory contains the AI/ML physical-process anomaly detector for the CHEM-SHIELD academic prototype. It answers one limited question:

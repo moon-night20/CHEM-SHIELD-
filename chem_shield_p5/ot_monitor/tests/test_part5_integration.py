@@ -54,15 +54,11 @@ class Part5IntegrationTests(unittest.TestCase):
         self.assertEqual(set(p4_event), {"timestamp", "asset_id", "event_type", "anomaly_score"})
         self.assertEqual(p4_event["event_type"], "physical")
 
-        correlation_dir = ROOT.parent.parent / "chem_shield_p4" / "correlation"
-        sys.path.insert(0, str(correlation_dir))
-        try:
-            from validator import EventValidator
-            validated = EventValidator().validate_one(p4_event)
-            self.assertEqual(validated.asset_id, "M-01")
-            self.assertEqual(validated.event_type, "physical")
-        finally:
-            sys.path.remove(str(correlation_dir))
+        from chem_shield_p4.correlation.validator import EventValidator
+
+        validated = EventValidator().validate_one(p4_event)
+        self.assertEqual(validated.asset_id, "M-01")
+        self.assertEqual(validated.event_type, "physical")
 
     def test_part5_replay_module_uses_p5_default_configuration(self):
         from chem_shield_p5.ot_monitor.__main__ import DEFAULT_CONFIG

@@ -13,10 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, List, Tuple
 
-try:
-    from .models import ALLOWED_EVENT_TYPES, AnomalyEvent
-except ImportError:
-    from models import ALLOWED_EVENT_TYPES, AnomalyEvent
+from .models import ALLOWED_EVENT_TYPES, AnomalyEvent
 
 
 REQUIRED_FIELDS = ("timestamp", "asset_id", "event_type", "anomaly_score")

@@ -229,16 +229,12 @@ class OTMonitorTests(unittest.TestCase):
             self.assertEqual(store.recent_events()[0]["source"], "ot_monitor")
 
     def test_correlation_validator_accepts_normalized_bridge_event(self):
-        correlation_dir = Path(__file__).resolve().parents[3] / "chem_shield_part4" / "correlation"
-        sys.path.insert(0, str(correlation_dir))
-        try:
-            from validator import EventValidator
-            ot_event = OTMonitor(config()).process([record(0, pressure=6)])[0]
-            validated = EventValidator().validate_one(to_part4_correlation_event(ot_event, 0.6))
-            self.assertEqual(validated.asset_id, "M-01")
-            self.assertEqual(validated.event_type, "physical")
-        finally:
-            sys.path.remove(str(correlation_dir))
+        from chem_shield_p4.correlation.validator import EventValidator
+
+        ot_event = OTMonitor(config()).process([record(0, pressure=6)])[0]
+        validated = EventValidator().validate_one(to_part4_correlation_event(ot_event, 0.6))
+        self.assertEqual(validated.asset_id, "M-01")
+        self.assertEqual(validated.event_type, "physical")
 
 
 if __name__ == "__main__":

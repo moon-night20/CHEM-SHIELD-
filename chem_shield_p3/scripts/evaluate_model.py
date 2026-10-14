@@ -3,19 +3,14 @@
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from src.detector import PhysicalAnomalyDetector
-from src.io_utils import DATA_DIR, DEFAULT_MODEL_PATH, RESULTS_DIR, read_telemetry_csv, write_csv
+from chem_shield_p3.src.detector import PhysicalAnomalyDetector
+from chem_shield_p3.src.io_utils import DATA_DIR, DEFAULT_MODEL_PATH, RESULTS_DIR, read_telemetry_csv, write_csv
 
 
 def _validate_labels(data: pd.DataFrame) -> pd.Series:

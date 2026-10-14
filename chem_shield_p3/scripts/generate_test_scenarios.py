@@ -3,17 +3,12 @@
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from src.io_utils import DATA_DIR, write_csv
+from chem_shield_p3.src.io_utils import DATA_DIR, write_csv
 
 
 def generate_test_scenarios(seed: int) -> pd.DataFrame:

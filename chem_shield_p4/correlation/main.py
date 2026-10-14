@@ -18,8 +18,8 @@ import argparse
 import json
 from pathlib import Path
 
-from correlation_engine import DEFAULT_TIME_WINDOW_SECONDS, CorrelationEngine
-from risk_engine import RiskEngine
+from chem_shield_p4.correlation.correlation_engine import DEFAULT_TIME_WINDOW_SECONDS, CorrelationEngine
+from chem_shield_p4.risk_engine import RiskEngine
 
 
 def load_events(path: Path) -> list:

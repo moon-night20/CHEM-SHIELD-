@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
 
 import matplotlib
@@ -13,12 +12,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from src.detector import PhysicalAnomalyDetector
-from src.io_utils import DEFAULT_MODEL_PATH, GRAPHS_DIR, RESULTS_DIR
+from chem_shield_p3.src.detector import PhysicalAnomalyDetector
+from chem_shield_p3.src.io_utils import DEFAULT_MODEL_PATH, GRAPHS_DIR, RESULTS_DIR
 
 
 def _save(figure: plt.Figure, output: Path) -> None:

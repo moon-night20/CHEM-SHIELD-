@@ -17,12 +17,8 @@ import math
 from datetime import timedelta
 from typing import Any, Dict, List, Tuple
 
-try:
-    from .models import AnomalyEvent, Incident
-    from .validator import EventValidator, ValidationError
-except ImportError:
-    from models import AnomalyEvent, Incident
-    from validator import EventValidator, ValidationError
+from .models import AnomalyEvent, Incident
+from .validator import EventValidator, ValidationError
 
 
 DEFAULT_TIME_WINDOW_SECONDS = 10.0

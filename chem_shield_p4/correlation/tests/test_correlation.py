@@ -1,15 +1,10 @@
 """Unit tests for the rule-based correlation engine."""
 
-import sys
 import unittest
 from datetime import datetime
-from pathlib import Path
 
-# Allow "python -m unittest discover -s tests" from this folder in VS Code.
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from correlation_engine import CorrelationEngine
-from models import AnomalyEvent
+from chem_shield_p4.correlation.correlation_engine import CorrelationEngine
+from chem_shield_p4.correlation.models import AnomalyEvent
 
 
 def event(ts: str, asset: str, event_type: str, score: float) -> AnomalyEvent:

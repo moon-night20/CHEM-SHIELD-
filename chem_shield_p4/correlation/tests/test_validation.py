@@ -1,14 +1,9 @@
 """Unit tests for event validation."""
 
-import sys
 import unittest
-from pathlib import Path
 
-# Allow "python -m unittest discover -s tests" from this folder in VS Code.
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from models import AnomalyEvent
-from validator import EventValidator
+from chem_shield_p4.correlation.models import AnomalyEvent
+from chem_shield_p4.correlation.validator import EventValidator
 
 
 class EventValidatorTests(unittest.TestCase):
