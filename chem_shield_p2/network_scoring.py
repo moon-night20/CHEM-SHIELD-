@@ -14,7 +14,7 @@ from chem_shield_p2.network_isolation_forest import NetworkIsolationForest
 LOGGER = logging.getLogger(__name__)
 PART2_DIR = Path(__file__).resolve().parent
 DEFAULT_BASELINE = PART2_DIR / "fixtures" / "network_baseline.json"
-DEFAULT_MODEL = PART2_DIR / "models" / "network_isolation_forest.joblib"
+DEFAULT_MODEL = PART2_DIR / "models" / "network_isolation_forest_calibrated.joblib"
 
 
 def train_network_model(
@@ -77,7 +77,7 @@ def score_to_part4_events(
 ) -> list[dict[str, Any]]:
     """Score normalized adapter events and apply the configured PLC asset mapping."""
     vectors = [network_feature_vector(event) for event in events]
-    scores = model.score_samples(vectors)
+    scores = model.calibrate_scores(model.score_samples(vectors))
     return [
         to_part4_event(event, score, configured_asset_id(event, config))
         for event, score in zip(events, scores)

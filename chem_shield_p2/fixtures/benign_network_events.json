@@ -1,0 +1,45 @@
+[
+  {
+    "source": "modbus_monitor",
+    "timestamp": "2026-10-14T09:00:01Z",
+    "client_ip": "192.168.2.10",
+    "server_ip": "10.10.10.5",
+    "client_port": 50102,
+    "server_port": 502,
+    "function_code": 3,
+    "operation": "read_holding_registers",
+    "register_address": 0,
+    "register_count": 10,
+    "approved_client": true,
+    "connection_status": "online",
+    "response_time_ms": 14,
+    "severity": "low"
+  },
+  {
+    "source": "modbus_monitor",
+    "timestamp": "2026-10-14T09:00:02Z",
+    "client_ip": "192.168.2.10",
+    "server_ip": "10.10.10.5",
+    "client_port": 50102,
+    "server_port": 502,
+    "function_code": 1,
+    "operation": "read_coils",
+    "register_address": 0,
+    "register_count": 10,
+    "approved_client": true,
+    "connection_status": "online",
+    "response_time_ms": 12,
+    "severity": "low"
+  },
+  {
+    "source": "os_security",
+    "timestamp": "2026-10-14T09:00:03Z",
+    "hostname": "plc-01",
+    "log_name": "Security",
+    "user": "operator",
+    "src_ip": "192.168.2.10",
+    "message": "Successful login by operator",
+    "result": "success",
+    "severity": "low"
+  }
+]

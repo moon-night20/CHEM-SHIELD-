@@ -110,9 +110,9 @@ def network_feature_vector(record: dict[str, Any]) -> list[float]:
             None,
         )
 
-    def number(value: Any, field: str) -> float:
+    def number(value: Any, field: str, default: float = 0.0) -> float:
         if value is None:
-            return 0.0
+            return default
         if isinstance(value, bool):
             return float(value)
         try:
@@ -131,7 +131,11 @@ def network_feature_vector(record: dict[str, Any]) -> list[float]:
             evidence.get("pkts_toserver"),
             evidence.get("pkts_toclient"),
         ]
-        packet_count = sum(number(value, "packets") for value in packet_parts if value is not None)
+        present_packet_parts = [value for value in packet_parts if value is not None]
+        if present_packet_parts:
+            packet_count = sum(
+                number(value, "packets") for value in present_packet_parts
+            )
 
     byte_count = first_value("bytes", "byte_count")
     if byte_count is None:
@@ -141,19 +145,47 @@ def network_feature_vector(record: dict[str, Any]) -> list[float]:
             evidence.get("bytes_toserver"),
             evidence.get("bytes_toclient"),
         ]
-        byte_count = sum(number(value, "bytes") for value in byte_parts if value is not None)
+        present_byte_parts = [value for value in byte_parts if value is not None]
+        if present_byte_parts:
+            byte_count = sum(number(value, "bytes") for value in present_byte_parts)
 
-    state = first_value("connection_state", "conn_state", "state")
+    state = first_value(
+        "connection_state", "conn_state", "state", "connection_status"
+    )
+    if state is None:
+        result = first_value("result", "action")
+        if result is not None:
+            result_text = str(result).strip().casefold()
+            if result_text in {"success", "successful", "allowed", "accepted"}:
+                state = "established"
+            elif result_text in {"failure", "failed", "denied", "rejected"}:
+                state = "REJ"
+    signature = first_value("signature", "message", "category")
+    if state is None and signature is not None and "scan" in str(signature).casefold():
+        state = "S0"
     operation = first_value("modbus_operation", "operation")
+    state_value = str(state).strip().casefold() if state is not None else "established"
+    if state_value in {"online", "success", "successful"}:
+        state_value = "established"
+    elif state_value in {"failed", "failure", "denied", "rejected"}:
+        state_value = "rej"
     values = [
-        number(first_value("duration", "duration_seconds"), "duration"),
-        number(packet_count, "packets"),
-        number(byte_count, "bytes"),
-        number(first_value("dst_port", "dest_port", "server_port"), "dst_port"),
-        float(STATE_FEATURES.get(str(state).lower(), 0)) if state is not None else 0.0,
-        number(first_value("modbus_function_code", "function_code"), "modbus_function_code"),
-        float(OPERATION_FEATURES.get(str(operation).lower(), 0)) if operation is not None else 0.0,
-        number(first_value("approved_client"), "approved_client"),
+        number(first_value("duration", "duration_seconds"), "duration", 0.12),
+        number(packet_count, "packets", 22.0),
+        number(byte_count, "bytes", 1100.0),
+        number(first_value("dst_port", "dest_port", "server_port"), "dst_port", 502.0),
+        float(STATE_FEATURES.get(state_value, 1)),
+        number(
+            first_value("modbus_function_code", "function_code"),
+            "modbus_function_code",
+            3.0,
+        ),
+        float(
+            OPERATION_FEATURES.get(
+                str(operation).lower(), 1 if operation is None else 0
+            )
+        ),
+        number(first_value("approved_client"), "approved_client", 1.0),
     ]
     return values
 

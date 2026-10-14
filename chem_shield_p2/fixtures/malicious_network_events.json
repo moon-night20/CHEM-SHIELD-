@@ -1,0 +1,107 @@
+[
+  {
+    "source": "modbus_monitor",
+    "timestamp": "2026-10-14T09:10:00Z",
+    "client_ip": "203.0.113.44",
+    "server_ip": "10.10.10.5",
+    "client_port": 51005,
+    "server_port": 502,
+    "function_code": 5,
+    "operation": "write_single_coil",
+    "approved_client": false,
+    "connection_status": "online",
+    "response_time_ms": 25,
+    "severity": "high"
+  },
+  {
+    "source": "modbus_monitor",
+    "timestamp": "2026-10-14T09:10:01Z",
+    "client_ip": "203.0.113.44",
+    "server_ip": "10.10.10.5",
+    "client_port": 51005,
+    "server_port": 502,
+    "function_code": 6,
+    "operation": "write_single_register",
+    "approved_client": false,
+    "connection_status": "online",
+    "response_time_ms": 25,
+    "severity": "high"
+  },
+  {
+    "source": "modbus_monitor",
+    "timestamp": "2026-10-14T09:10:02Z",
+    "client_ip": "203.0.113.44",
+    "server_ip": "10.10.10.5",
+    "client_port": 51005,
+    "server_port": 502,
+    "function_code": 15,
+    "operation": "write_multiple_coils",
+    "approved_client": false,
+    "connection_status": "online",
+    "response_time_ms": 25,
+    "severity": "high"
+  },
+  {
+    "source": "modbus_monitor",
+    "timestamp": "2026-10-14T09:10:03Z",
+    "client_ip": "203.0.113.44",
+    "server_ip": "10.10.10.5",
+    "client_port": 51005,
+    "server_port": 502,
+    "function_code": 16,
+    "operation": "write_multiple_registers",
+    "approved_client": false,
+    "connection_status": "online",
+    "response_time_ms": 25,
+    "severity": "high"
+  },
+  {
+    "source": "os_security",
+    "timestamp": "2026-10-14T09:10:04Z",
+    "hostname": "plc-01",
+    "log_name": "Security",
+    "user": "operator",
+    "src_ip": "203.0.113.44",
+    "message": "Failed login attempt",
+    "result": "failed",
+    "severity": "high"
+  },
+  {
+    "source": "zeek",
+    "ts": "2026-10-14T09:10:05Z",
+    "id.orig_h": "203.0.113.44",
+    "id.orig_p": 51005,
+    "id.resp_h": "10.10.10.5",
+    "id.resp_p": 1,
+    "proto": "tcp",
+    "duration": 0.01,
+    "orig_pkts": 1,
+    "resp_pkts": 0,
+    "orig_bytes": 40,
+    "resp_bytes": 0,
+    "conn_state": "S0",
+    "history": "S"
+  },
+  {
+    "source": "suricata",
+    "timestamp": "2026-10-14T09:10:06Z",
+    "src_ip": "203.0.113.44",
+    "src_port": 51005,
+    "dest_ip": "10.10.10.5",
+    "dest_port": 1,
+    "proto": "TCP",
+    "alert": {
+      "signature": "Synthetic vertical port scan",
+      "category": "port_scan",
+      "severity": "high",
+      "signature_id": 900001
+    },
+    "flow": {
+      "state": "new",
+      "pkts_toserver": 1,
+      "pkts_toclient": 0,
+      "bytes_toserver": 40,
+      "bytes_toclient": 0
+    }
+  }
+]

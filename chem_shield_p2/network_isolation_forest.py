@@ -86,14 +86,14 @@ class IsolationTree:
 
     def _select_feature(self, rows: Sequence[Sequence[float]]) -> int:
         feature_count = len(rows[0])
-        variances = []
+        varying_features = []
         for index in range(feature_count):
             values = [row[index] for row in rows]
-            variances.append((index, _variance(values)))
-        _, best = max(variances, key=lambda item: item[1])
-        if best == 0:
+            if _variance(values) > 0:
+                varying_features.append(index)
+        if not varying_features:
             return self.random.randrange(feature_count)
-        return max(variances, key=lambda item: item[1])[0]
+        return self.random.choice(varying_features)
 
     def path_length(self, row: Sequence[float]) -> float:
         node = self.root
@@ -123,7 +123,7 @@ class IsolationTree:
 
 
 class NetworkIsolationForest:
-    """Isolation forest variant using duration, packet counts, ports, state, and Modbus fields.
+    """Isolation forest using duration, packet counts, ports, state, and Modbus fields.
 
     Scores are relative anomalies in a baseline population. A higher score indicates a
     stronger deviation from normal connectivity behaviour; it is not a probability of
@@ -136,6 +136,10 @@ class NetworkIsolationForest:
         self.random_seed = random_seed
         self.estimators_: list[IsolationTree] = []
         self.feature_names_: list[str] = []
+        self.feature_mins_: list[float] = []
+        self.feature_maxs_: list[float] = []
+        self.training_score_min_: float | None = None
+        self.training_score_max_: float | None = None
 
     def fit(self, X: Iterable[Sequence[float]]) -> "NetworkIsolationForest":
         rows = [list(row) for row in X]
@@ -147,6 +151,14 @@ class NetworkIsolationForest:
         if any(not math.isfinite(float(value)) for row in rows for value in row):
             raise ValueError("Baseline features must be finite numbers")
         self.feature_names_ = [f"feature_{idx}" for idx in range(len(rows[0]))]
+        self.feature_mins_ = [
+            min(float(row[index]) for row in rows)
+            for index in range(feature_count)
+        ]
+        self.feature_maxs_ = [
+            max(float(row[index]) for row in rows)
+            for index in range(feature_count)
+        ]
         self.estimators_ = []
         for index in range(self.n_estimators):
             tree = IsolationTree(max_depth=self.max_depth, random_seed=self.random_seed + index)
@@ -155,6 +167,9 @@ class NetworkIsolationForest:
             sample = sample[:sample_size]
             tree.fit_root(sample)
             self.estimators_.append(tree)
+        training_scores = self.score_samples(rows)
+        self.training_score_min_ = min(training_scores)
+        self.training_score_max_ = max(training_scores)
         return self
 
     def score_samples(self, X: Iterable[Sequence[float]]) -> list[float]:
@@ -173,8 +188,41 @@ class NetworkIsolationForest:
             avg_path = sum(model_scores) / len(model_scores)
             # Standard isolation-forest score transform; higher means more anomalous.
             score = 2.0 ** (-avg_path / _adjusted_path_length(max(2, len(row))))
-            scores.append(float(score))
+            novelty = 0.0
+            for index, value in enumerate(row):
+                feature_value = float(value)
+                minimum = self.feature_mins_[index]
+                maximum = self.feature_maxs_[index]
+                if feature_value < minimum:
+                    deviation = minimum - feature_value
+                elif feature_value > maximum:
+                    deviation = feature_value - maximum
+                else:
+                    continue
+                scale = max(maximum - minimum, abs((minimum + maximum) / 2), 1.0)
+                novelty = max(novelty, deviation / scale)
+            scores.append(float(score + novelty))
         return scores
+
+    def calibrate_scores(self, scores: Iterable[float]) -> list[float]:
+        """Map training-range scores below 0.3 and smoothly scale higher scores."""
+        if self.training_score_min_ is None or self.training_score_max_ is None:
+            raise ValueError("Model has no fitted score calibration")
+        lower = self.training_score_min_
+        upper = self.training_score_max_
+        reference_range = max(upper - lower, 1e-12)
+        calibrated: list[float] = []
+        for raw_score in scores:
+            score = float(raw_score)
+            if not math.isfinite(score):
+                raise ValueError("Scores to calibrate must be finite")
+            if score <= upper:
+                normalized = min(1.0, max(0.0, (score - lower) / reference_range))
+                calibrated.append(0.25 * normalized)
+            else:
+                excess = score - upper
+                calibrated.append(0.3 + 0.7 * (1.0 - math.exp(-excess / reference_range)))
+        return calibrated
 
     def save(self, path: str | Path) -> Path:
         if not self.estimators_:
@@ -191,6 +239,16 @@ class NetworkIsolationForest:
             raise TypeError(f"Artifact at {path} is not a {cls.__name__}")
         if not loaded.estimators_ or not loaded.feature_names_:
             raise ValueError(f"Artifact at {path} does not contain a fitted model")
+        if (
+            len(getattr(loaded, "feature_mins_", [])) != len(loaded.feature_names_)
+            or len(getattr(loaded, "feature_maxs_", [])) != len(loaded.feature_names_)
+        ):
+            raise ValueError(f"Artifact at {path} does not contain fitted feature ranges")
+        if (
+            getattr(loaded, "training_score_min_", None) is None
+            or getattr(loaded, "training_score_max_", None) is None
+        ):
+            raise ValueError(f"Artifact at {path} does not contain score calibration data")
         return loaded
 
     def evaluate(self, X_normal: Iterable[Sequence[float]], X_abnormal: Iterable[Sequence[float]]) -> dict[str, float]:

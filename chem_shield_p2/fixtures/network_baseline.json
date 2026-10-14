@@ -7,7 +7,7 @@
   {"duration": 0.12, "packets": 22, "bytes": 1100, "dst_port": 502, "connection_state": "established", "modbus_function_code": 3, "modbus_operation": "read_holding_registers", "approved_client": 1},
   {"duration": 0.09, "packets": 20, "bytes": 900, "dst_port": 502, "connection_state": "established", "modbus_function_code": 3, "modbus_operation": "read_holding_registers", "approved_client": 1},
   {"duration": 0.16, "packets": 31, "bytes": 1680, "dst_port": 502, "connection_state": "established", "modbus_function_code": 3, "modbus_operation": "read_holding_registers", "approved_client": 1},
-  {"duration": 0.14, "packets": 23, "bytes": 1240, "dst_port": 502, "connection_state": "established", "modbus_function_code": 5, "modbus_operation": "write_single_coil", "approved_client": 1},
+  {"duration": 0.14, "packets": 23, "bytes": 1240, "dst_port": 502, "connection_state": "established", "modbus_function_code": 1, "modbus_operation": "read_coils", "approved_client": 1},
   {"duration": 0.11, "packets": 19, "bytes": 990, "dst_port": 502, "connection_state": "established", "modbus_function_code": 3, "modbus_operation": "read_holding_registers", "approved_client": 1},
   {"duration": 0.07, "packets": 17, "bytes": 820, "dst_port": 502, "connection_state": "established", "modbus_function_code": 3, "modbus_operation": "read_holding_registers", "approved_client": 1},
   {"duration": 0.12, "packets": 29, "bytes": 1300, "dst_port": 502, "connection_state": "established", "modbus_function_code": 3, "modbus_operation": "read_holding_registers", "approved_client": 1},
@@ -16,7 +16,7 @@
   {"duration": 0.08, "packets": 15, "bytes": 780, "dst_port": 502, "connection_state": "established", "modbus_function_code": 1, "modbus_operation": "read_coils", "approved_client": 1},
   {"duration": 0.17, "packets": 35, "bytes": 1820, "dst_port": 502, "connection_state": "established", "modbus_function_code": 3, "modbus_operation": "read_holding_registers", "approved_client": 1},
   {"duration": 0.11, "packets": 21, "bytes": 1020, "dst_port": 502, "connection_state": "established", "modbus_function_code": 3, "modbus_operation": "read_holding_registers", "approved_client": 1},
-  {"duration": 0.15, "packets": 30, "bytes": 1700, "dst_port": 502, "connection_state": "established", "modbus_function_code": 16, "modbus_operation": "write_multiple_registers", "approved_client": 1},
+  {"duration": 0.15, "packets": 30, "bytes": 1700, "dst_port": 502, "connection_state": "established", "modbus_function_code": 4, "modbus_operation": "read_input_registers", "approved_client": 1},
   {"duration": 0.12, "packets": 22, "bytes": 1080, "dst_port": 502, "connection_state": "established", "modbus_function_code": 3, "modbus_operation": "read_holding_registers", "approved_client": 1},
   {"duration": 0.09, "packets": 16, "bytes": 860, "dst_port": 502, "connection_state": "established", "modbus_function_code": 3, "modbus_operation": "read_holding_registers", "approved_client": 1}
 ]
