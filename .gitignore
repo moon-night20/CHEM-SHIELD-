@@ -3,3 +3,4 @@
 *.py[cod]
 .DS_Store
 **/data/*.db
+chem_shield_p2/models/*.joblib

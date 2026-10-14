@@ -1,0 +1,7 @@
+{
+  "default_asset_id": "PLC-01",
+  "asset_id_map": {
+    "10.10.10.5": "PLC-01",
+    "plc-01": "PLC-01"
+  }
+}

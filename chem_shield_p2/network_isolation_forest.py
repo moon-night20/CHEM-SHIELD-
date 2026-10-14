@@ -10,8 +10,10 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Iterable, Sequence
 
+import joblib
 
 def _mean(values: Sequence[float]) -> float:
     return sum(values) / len(values) if values else 0.0
@@ -139,6 +141,11 @@ class NetworkIsolationForest:
         rows = [list(row) for row in X]
         if not rows:
             raise ValueError("At least one baseline row is required to fit the model")
+        feature_count = len(rows[0])
+        if feature_count == 0 or any(len(row) != feature_count for row in rows):
+            raise ValueError("All baseline rows must have the same non-zero feature count")
+        if any(not math.isfinite(float(value)) for row in rows for value in row):
+            raise ValueError("Baseline features must be finite numbers")
         self.feature_names_ = [f"feature_{idx}" for idx in range(len(rows[0]))]
         self.estimators_ = []
         for index in range(self.n_estimators):
@@ -155,6 +162,10 @@ class NetworkIsolationForest:
             raise ValueError("Model has not been fit yet")
         scores: list[float] = []
         for row in X:
+            if len(row) != len(self.feature_names_):
+                raise ValueError("Feature count differs from the fitted model")
+            if any(not math.isfinite(float(value)) for value in row):
+                raise ValueError("Scoring features must be finite numbers")
             model_scores = []
             for tree in self.estimators_:
                 path_length = tree.path_length(list(row))
@@ -164,6 +175,23 @@ class NetworkIsolationForest:
             score = 2.0 ** (-avg_path / _adjusted_path_length(max(2, len(row))))
             scores.append(float(score))
         return scores
+
+    def save(self, path: str | Path) -> Path:
+        if not self.estimators_:
+            raise ValueError("Cannot save an unfitted model")
+        destination = Path(path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        joblib.dump(self, destination)
+        return destination
+
+    @classmethod
+    def load(cls, path: str | Path) -> "NetworkIsolationForest":
+        loaded = joblib.load(path)
+        if not isinstance(loaded, cls):
+            raise TypeError(f"Artifact at {path} is not a {cls.__name__}")
+        if not loaded.estimators_ or not loaded.feature_names_:
+            raise ValueError(f"Artifact at {path} does not contain a fitted model")
+        return loaded
 
     def evaluate(self, X_normal: Iterable[Sequence[float]], X_abnormal: Iterable[Sequence[float]]) -> dict[str, float]:
         normal_scores = self.score_samples(X_normal)

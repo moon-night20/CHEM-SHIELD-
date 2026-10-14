@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Sequence
@@ -15,6 +16,16 @@ from typing import Any, Iterable, Sequence
 
 ALLOWED_SEVERITIES = {"info", "low", "medium", "high", "critical"}
 ALLOWED_EVENT_TYPES = {"connection", "alert", "modbus", "os_security"}
+STATE_FEATURES = {"established": 1, "new": 2, "s0": 0, "rej": 3}
+OPERATION_FEATURES = {
+    "read_holding_registers": 1,
+    "read_coils": 2,
+    "read_input_registers": 3,
+    "write_single_coil": 4,
+    "write_single_register": 5,
+    "write_multiple_registers": 6,
+    "read_write_multiple_registers": 7,
+}
 
 
 class AdapterError(ValueError):
@@ -85,6 +96,116 @@ def _clean_evidence(raw: dict[str, Any]) -> dict[str, Any]:
         if isinstance(value, (str, int, float, bool, dict, list)) or value is None:
             evidence[key] = value
     return evidence
+
+
+def network_feature_vector(record: dict[str, Any]) -> list[float]:
+    """Map fixture or normalized adapter fields to the network model features."""
+    evidence = record.get("evidence", record)
+    if not isinstance(evidence, dict):
+        raise AdapterError("Network event evidence must be an object")
+
+    def first_value(*names: str) -> Any:
+        return next(
+            (evidence[name] for name in names if evidence.get(name) is not None),
+            None,
+        )
+
+    def number(value: Any, field: str) -> float:
+        if value is None:
+            return 0.0
+        if isinstance(value, bool):
+            return float(value)
+        try:
+            result = float(value)
+        except (TypeError, ValueError) as exc:
+            raise AdapterError(f"Network feature {field!r} must be numeric") from exc
+        if not math.isfinite(result):
+            raise AdapterError(f"Network feature {field!r} must be finite")
+        return result
+
+    packet_count = first_value("packets", "packet_count")
+    if packet_count is None:
+        packet_parts = [
+            evidence.get("orig_pkts"),
+            evidence.get("resp_pkts"),
+            evidence.get("pkts_toserver"),
+            evidence.get("pkts_toclient"),
+        ]
+        packet_count = sum(number(value, "packets") for value in packet_parts if value is not None)
+
+    byte_count = first_value("bytes", "byte_count")
+    if byte_count is None:
+        byte_parts = [
+            evidence.get("orig_bytes"),
+            evidence.get("resp_bytes"),
+            evidence.get("bytes_toserver"),
+            evidence.get("bytes_toclient"),
+        ]
+        byte_count = sum(number(value, "bytes") for value in byte_parts if value is not None)
+
+    state = first_value("connection_state", "conn_state", "state")
+    operation = first_value("modbus_operation", "operation")
+    values = [
+        number(first_value("duration", "duration_seconds"), "duration"),
+        number(packet_count, "packets"),
+        number(byte_count, "bytes"),
+        number(first_value("dst_port", "dest_port", "server_port"), "dst_port"),
+        float(STATE_FEATURES.get(str(state).lower(), 0)) if state is not None else 0.0,
+        number(first_value("modbus_function_code", "function_code"), "modbus_function_code"),
+        float(OPERATION_FEATURES.get(str(operation).lower(), 0)) if operation is not None else 0.0,
+        number(first_value("approved_client"), "approved_client"),
+    ]
+    return values
+
+
+def to_part4_event(
+    event: dict[str, Any],
+    anomaly_score: float,
+    asset_id: str | None = None,
+) -> dict[str, Any]:
+    """Convert a scored P2 event to Part 4's network-event contract."""
+    if not isinstance(event, dict):
+        raise AdapterError("Network event must be an object")
+    try:
+        score = float(anomaly_score)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise AdapterError("anomaly_score must be a finite number in [0, 1]") from exc
+    if not math.isfinite(score) or not 0.0 <= score <= 1.0:
+        raise AdapterError("anomaly_score must be a finite number in [0, 1]")
+    timestamp = event.get("timestamp")
+    mapped_asset = asset_id or event.get("asset_id")
+    if not isinstance(timestamp, str) or not timestamp.strip():
+        raise AdapterError("timestamp must be a non-empty string")
+    if not isinstance(mapped_asset, str) or not mapped_asset.strip():
+        raise AdapterError("asset_id must be a non-empty string")
+
+    source = event.get("source") or "network_model"
+    evidence = event.get("evidence") or {}
+    if not isinstance(evidence, dict):
+        raise AdapterError("Network event evidence must be an object")
+    event_id = event.get("event_id")
+    if not isinstance(event_id, str) or not event_id:
+        stable_identity = json.dumps(
+            {"source": source, "timestamp": timestamp, "evidence": evidence},
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        event_id = hashlib.sha256(stable_identity.encode("utf-8")).hexdigest()[:16]
+
+    return {
+        "event_id": event_id,
+        "timestamp": timestamp,
+        "source": source,
+        "asset_id": mapped_asset.strip(),
+        "event_type": "network",
+        "anomaly_score": score,
+        "severity": _normalize_severity(event.get("severity"), "info"),
+        "evidence": {
+            **evidence,
+            "adapter_event_type": event.get("event_type"),
+            "model": "NetworkIsolationForest",
+        },
+    }
 
 
 class BaseAdapter:
@@ -332,6 +453,8 @@ __all__ = [
     "ModbusMonitorAdapter",
     "OsSecurityAdapter",
     "normalize_record",
+    "network_feature_vector",
+    "to_part4_event",
     "replay_events",
     "replay_json",
     "replay_jsonl",
