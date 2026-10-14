@@ -37,12 +37,14 @@ python3 -m venv chem_shield_p1/.venv
 chem_shield_p1/.venv/bin/python -m pip install -r chem_shield_p1/requirements.txt
 ```
 
-To run the virtual machine, open three terminals from the repository root and
-run one command in each terminal:
+This is the way the project was run during implementation: open three
+terminals from the repository root and run one command in each terminal:
 
 ```bash
 chem_shield_p1/.venv/bin/python -m chem_shield_p1.plc.modbus_plc --host 127.0.0.1 --port 15020
 ```
+
+
 
 ```bash
 chem_shield_p1/.venv/bin/python -m chem_shield_p1.process.main --host 127.0.0.1 --port 15020 --database chem_shield_p1/data/telemetry.db
