@@ -30,26 +30,26 @@ later lab setup without changing the HMI or process client.
 
 Python 3.10+ is recommended.
 
+Install the Part 1 dependencies from the repository root:
+
 ```bash
-cd chem_shield
-python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install -r requirements.txt
+python3 -m venv chem_shield_p1/.venv
+chem_shield_p1/.venv/bin/python -m pip install -r chem_shield_p1/requirements.txt
 ```
 
-To run the machine, open three terminals from the repository root and run one
-command in each terminal:
+To run the virtual machine, open three terminals from the repository root and
+run one command in each terminal:
 
 ```bash
-chem_shield/.venv/bin/python -m chem_shield.plc.modbus_plc --host 127.0.0.1 --port 15020
-```
-
-```bash
-chem_shield/.venv/bin/python -m chem_shield.process.main --host 127.0.0.1 --port 15020 --database chem_shield/data/telemetry.db
+chem_shield_p1/.venv/bin/python -m chem_shield_p1.plc.modbus_plc --host 127.0.0.1 --port 15020
 ```
 
 ```bash
-chem_shield/.venv/bin/python -m chem_shield.hmi.app --host 127.0.0.1 --port 15000 --plc-port 15020 --database chem_shield/data/telemetry.db
+chem_shield_p1/.venv/bin/python -m chem_shield_p1.process.main --host 127.0.0.1 --port 15020 --database chem_shield_p1/data/telemetry.db
+```
+
+```bash
+chem_shield_p1/.venv/bin/python -m chem_shield_p1.hmi.app --host 127.0.0.1 --port 15000 --plc-port 15020 --database chem_shield_p1/data/telemetry.db
 ```
 
 Then open `http://127.0.0.1:15000`.
@@ -79,7 +79,7 @@ pressure, and power are stored as integer hundredths.
 
 ## Outputs for later CHEM-SHIELD phases
 
-`data/telemetry.db` contains the stable `telemetry` table with timestamp,
+`chem_shield_p1/data/telemetry.db` contains the stable `telemetry` table with timestamp,
 machine ID, PLC ID, motor status, target RPM, RPM, temperature, pressure, and
 power. The `events` table uses the common event format and is ready for later
 network, ML, correlation, and risk components.
@@ -87,7 +87,10 @@ network, ML, correlation, and risk components.
 ## Tests
 
 ```bash
-python -m unittest discover -s chem_shield/tests -v
+chem_shield_p1/.venv/bin/python -m unittest discover -s chem_shield_p1/tests -v
+PYTHONPATH=chem_shield_p4/correlation \
+  chem_shield_p1/.venv/bin/python -m unittest discover -s chem_shield_p1/ot_monitor/tests -v
+chem_shield_p1/.venv/bin/python -m unittest discover -s chem_shield_p1/hmi/tests -v
 ```
 
 ## Optional OT physical-process monitoring
@@ -100,7 +103,15 @@ Part 1 PLC, HMI, or SQLite schema.
 All components are simulation-only and should remain bound to `127.0.0.1` for
 this academic prototype.
 
+## Part 4 incident and risk dashboard
 
-We are using pip version 21.2.4; however, version 26.0.1 is available.
-You should consider upgrading via the '/Users/moonlit-night/Desktop/CHEM-SHIELD-/chem_shield/.venv/bin/python -m pip install --upgrade pip' command.
+The existing HMI also exposes Part 4 correlation/risk endpoints. External
+detectors may submit normalized records to `POST /api/risk/events`; this path
+does not call PLC write functions or alter the existing `telemetry` or `events`
+tables. Risk-specific data uses additive `risk_incidents`, `risk_events`, and
+`risk_ingest_state` tables in the same SQLite file.
 
+See [Part 4 correlation and risk documentation](../chem_shield_p4/correlation/README.md)
+for event shapes, score handling, acknowledgement semantics, curl examples, and
+the focused test command. The web service has no authentication layer and must
+remain bound to localhost in this academic prototype.

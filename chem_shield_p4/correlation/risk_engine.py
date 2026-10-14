@@ -1,38 +1,16 @@
-"""
-CHEM-SHIELD Part 4 — Risk Engine (placeholder).
+"""Compatibility imports for the canonical Part 4 risk engine."""
 
-Correlation and risk are kept separate on purpose.
+try:
+    from ..risk_engine.config import RiskConfig, RiskConfigurationError, default_risk_config
+    from ..risk_engine.risk_engine import RiskEngine, RiskValidationError
+except ImportError:
+    from chem_shield_p4.risk_engine.config import RiskConfig, RiskConfigurationError, default_risk_config
+    from chem_shield_p4.risk_engine.risk_engine import RiskEngine, RiskValidationError
 
-This file is the interface for a later version.
-Do NOT put a risk formula here yet.
-The correlation engine should finish first and pass Incident objects in.
-"""
-
-from __future__ import annotations
-
-from typing import List
-
-from models import Incident
-
-
-class RiskEngine:
-    """
-    Later this class will calculate a final risk score per incident.
-
-    Expected future input: a correlated Incident (from correlation_engine.py).
-    Expected future output: a risk result attached to that incident.
-    """
-
-    def calculate_risk(self, incident: Incident) -> None:
-        """Not implemented in Part 4 Version 1."""
-        raise NotImplementedError(
-            "Risk scoring is not part of this version. "
-            "Pass correlated Incident objects here in a later update."
-        )
-
-    def calculate_risks(self, incidents: List[Incident]) -> None:
-        """Not implemented in Part 4 Version 1."""
-        raise NotImplementedError(
-            "Batch risk scoring is not part of this version. "
-            "The correlation engine output is ready to be consumed later."
-        )
+__all__ = [
+    "RiskConfig",
+    "RiskConfigurationError",
+    "RiskEngine",
+    "RiskValidationError",
+    "default_risk_config",
+]

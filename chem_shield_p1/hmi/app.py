@@ -1,17 +1,29 @@
 """Minimal Flask operator panel for the isolated virtual lab."""
 
 import argparse
-from datetime import datetime, timezone
+import sqlite3
+from datetime import datetime, timezone, timedelta
 
 from flask import Flask, jsonify, render_template, request
 from chem_shield_p1.communication.device_connection import DeviceConnection
 from chem_shield_p1.data.store import TelemetryStore
 from chem_shield_p1.events.abnormal_events import write_event
+from chem_shield_p4.correlation.incident_store import IncidentStore
+from chem_shield_p4.correlation.risk_pipeline import RiskPipeline
 
 
-def create_app(plc_host="127.0.0.1", plc_port=5020, database="chem_shield/data/telemetry.db"):
+def create_app(
+    plc_host="127.0.0.1",
+    plc_port=5020,
+    database="chem_shield_p1/data/telemetry.db",
+    risk_criticality_by_asset=None,
+):
     app = Flask(__name__)
     store = TelemetryStore(database)
+    incident_store = IncidentStore(database)
+    risk_pipeline = RiskPipeline(
+        incident_store, criticality_by_asset=risk_criticality_by_asset
+    )
     paused = False
     device = DeviceConnection(plc_host, plc_port)
     try:
@@ -71,6 +83,99 @@ def create_app(plc_host="127.0.0.1", plc_port=5020, database="chem_shield/data/t
     def event_feed():
         return jsonify(store.recent_events())
 
+    @app.post("/api/risk/events")
+    def risk_event_ingest():
+        payload = request.get_json(silent=True)
+        if isinstance(payload, dict) and "events" in payload:
+            incoming = payload["events"]
+        elif isinstance(payload, dict):
+            incoming = [payload]
+        else:
+            incoming = payload
+        try:
+            result = risk_pipeline.ingest(incoming)
+            status_code = 400 if result["rejected"] and not result["accepted"] else 200
+            return jsonify(result), status_code
+        except (ValueError, sqlite3.Error) as error:
+            app.logger.exception("Risk event ingestion failed")
+            return jsonify({"error": str(error)}), 400 if isinstance(error, ValueError) else 503
+
+    @app.get("/api/risk")
+    def risk_summary():
+        try:
+            active = incident_store.list_incidents(limit=100, active_only=True)
+            scored = [item for item in active if item["risk_score"] is not None]
+            rank = {"LOW": 0, "MEDIUM": 1, "HIGH": 2, "CRITICAL": 3}
+            highest = max(
+                scored, key=lambda item: rank.get(item["risk_level"], -1), default=None
+            )
+            ingest_state = incident_store.ingest_status()
+            last_received = ingest_state["last_received_at"]
+            last_accepted = ingest_state["last_accepted_at"]
+            if not last_accepted:
+                input_status = "DEGRADED" if ingest_state["rejected_count"] else "NOT_CONNECTED"
+            elif ingest_state["rejected_count"]:
+                input_status = "DEGRADED"
+            else:
+                last_time = datetime.fromisoformat(last_accepted.replace("Z", "+00:00"))
+                input_status = (
+                    "STALE"
+                    if datetime.now(timezone.utc) - last_time > timedelta(seconds=60)
+                    else "ACTIVE"
+                )
+            return jsonify({
+                "risk_level": highest["risk_level"] if highest else "UNASSESSED",
+                "risk_score": highest["risk_score"] if highest else None,
+                "incident": highest,
+                "active_incidents": active,
+                "recent_incidents": incident_store.list_incidents(limit=20),
+                "input_status": input_status,
+                "last_received_at": last_received,
+                "accepted_count": ingest_state["accepted_count"],
+                "rejected_count": ingest_state["rejected_count"],
+                "score_scale": "0.0-1.0",
+                "scores_are_probabilities": False,
+            })
+        except sqlite3.Error as error:
+            app.logger.exception("Risk summary is unavailable")
+            return jsonify({"error": f"Risk summary unavailable: {error}"}), 503
+
+    @app.get("/api/incidents")
+    def incident_history():
+        try:
+            limit = min(100, max(1, int(request.args.get("limit", 50))))
+            active_only = request.args.get("active", "false").lower() in ("true", "1")
+            return jsonify({"incidents": incident_store.list_incidents(limit, active_only)})
+        except (ValueError, sqlite3.Error) as error:
+            app.logger.exception("Incident history is unavailable")
+            return jsonify({"error": str(error)}), 400 if isinstance(error, ValueError) else 503
+
+    @app.get("/api/incidents/<incident_id>")
+    def incident_detail(incident_id):
+        try:
+            incident = incident_store.get_incident(incident_id)
+            if incident is None:
+                return jsonify({"error": "Incident not found."}), 404
+            return jsonify(incident)
+        except sqlite3.Error as error:
+            app.logger.exception("Incident details are unavailable")
+            return jsonify({"error": str(error)}), 503
+
+    @app.post("/api/incidents/<incident_id>/acknowledge")
+    def acknowledge_incident(incident_id):
+        payload = request.get_json(silent=True) or {}
+        acknowledged_by = payload.get("acknowledged_by", "operator")
+        if not isinstance(acknowledged_by, str) or not acknowledged_by.strip():
+            return jsonify({"error": "acknowledged_by must be a non-empty string."}), 400
+        try:
+            incident = incident_store.acknowledge(incident_id, acknowledged_by.strip())
+            if incident is None:
+                return jsonify({"error": "Active incident not found."}), 404
+            return jsonify(incident)
+        except sqlite3.Error as error:
+            app.logger.exception("Incident acknowledgement failed")
+            return jsonify({"error": str(error)}), 503
+
     @app.post("/api/control")
     def control():
         nonlocal paused
@@ -128,7 +233,7 @@ if __name__ == "__main__":
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=5000)
     parser.add_argument("--plc-port", type=int, default=5020)
-    parser.add_argument("--database", default="chem_shield/data/telemetry.db")
+    parser.add_argument("--database", default="chem_shield_p1/data/telemetry.db")
     args = parser.parse_args()
     app = create_app(plc_port=args.plc_port, database=args.database)
     app.run(host=args.host, port=args.port, debug=False)

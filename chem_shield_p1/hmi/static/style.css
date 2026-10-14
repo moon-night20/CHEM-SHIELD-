@@ -239,3 +239,49 @@ footer { display:none; }
 	.focus-value { padding:10px 4px; }
 	.history-hint { display:none; }
 }
+
+.risk-panel { margin:10px 0; padding:18px; border:1px solid var(--panel-line); background:#0d1821; }
+.risk-heading,.incident-heading { display:flex; justify-content:space-between; align-items:center; gap:14px; }
+.risk-heading { margin-bottom:14px; }
+.risk-heading h2 { margin:5px 0 0; font-size:23px; }
+.risk-badge { border:1px solid var(--line-bright); padding:8px 12px; font:600 11px 'DM Mono',monospace; }
+.risk-badge.low { color:var(--green); border-color:#246347; background:#0d211d; }
+.risk-badge.medium { color:var(--amber); border-color:#6e5729; background:#30291a; }
+.risk-badge.high,.risk-badge.critical { color:#ffaaa5; border-color:#823b3e; background:#3a1d23; }
+.risk-badge.critical { box-shadow:0 0 18px rgba(239,91,91,.24); }
+.risk-badge.unassessed { color:var(--muted); }
+.risk-summary { display:grid; grid-template-columns:minmax(150px,.8fr) minmax(150px,1fr) 2fr; align-items:center; gap:18px; border:1px solid var(--line); padding:14px; background:#08131e; }
+.risk-summary>div { display:grid; gap:6px; }
+.risk-label { color:var(--muted); font:500 9px 'DM Mono',monospace; letter-spacing:.08em; }
+.risk-summary strong { font:600 20px 'DM Mono',monospace; }
+.risk-summary small { color:var(--muted); font-size:10px; }
+.risk-input { font-size:14px!important; }
+.risk-note { margin:0; color:var(--muted); font-size:11px; line-height:1.6; }
+.incident-heading { margin:18px 0 10px; }
+.incident-heading h3 { margin-top:4px; }
+.incident-filter { color:var(--muted); font:500 9px 'DM Mono',monospace; }
+.incident-filter select { margin-left:7px; border:1px solid var(--line-bright); padding:6px 8px; color:var(--text); background:#08131e; font:inherit; }
+.incident-list { display:grid; gap:8px; max-height:340px; overflow:auto; }
+.incident-empty { margin:0; padding:14px; color:var(--muted); border:1px dashed var(--line); text-align:center; font-size:11px; }
+.incident-card { border:1px solid var(--line); padding:11px 13px; background:rgba(8,19,30,.8); }
+.incident-card.critical,.incident-card.high { border-left:3px solid var(--red); }
+.incident-card.medium { border-left:3px solid var(--amber); }
+.incident-card.low { border-left:3px solid var(--green); }
+.incident-card.unassessed { border-left:3px solid var(--dim); }
+.incident-card-head { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:8px; }
+.incident-id { color:var(--text); font:600 11px 'DM Mono',monospace; }
+.incident-meta,.incident-evidence { margin:7px 0 0; color:var(--muted); font:10px 'DM Mono',monospace; line-height:1.55; }
+.incident-actions { display:flex; align-items:center; gap:9px; }
+.incident-actions button,.risk-alert-actions button { border:1px solid var(--line-bright); padding:6px 9px; color:var(--text); background:var(--surface-2); font:500 9px 'DM Mono',monospace; }
+.incident-actions button:hover,.risk-alert-actions button:hover { border-color:var(--cyan); color:var(--cyan); }
+.acknowledged-label { color:var(--green); font:500 9px 'DM Mono',monospace; }
+.risk-alert-dialog { width:min(520px,calc(100vw - 32px)); border:1px solid #823b3e; padding:25px; color:var(--text); background:#17151b; box-shadow:0 22px 90px rgba(0,0,0,.72); }
+.risk-alert-dialog::backdrop { background:rgba(0,0,0,.74); }
+.risk-alert-dialog h2 { margin:8px 0 14px; color:#ffaaa5; font-size:24px; }
+.risk-alert-dialog p:not(.eyebrow) { color:var(--muted); line-height:1.6; }
+.risk-alert-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:22px; }
+.risk-alert-actions button:first-child { border-color:#823b3e; color:#ffaaa5; }
+@media (max-width:760px) {
+	.risk-summary { grid-template-columns:1fr 1fr; }
+	.risk-note { grid-column:1/-1; }
+}

@@ -13,8 +13,8 @@ This folder is intentionally separate from the physical OT process model in the 
 
 The main project keeps its physical telemetry model in:
 
-- `chem_shield/data/store.py` — SQLite schema for physical telemetry and common events.
-- `chem_shield/README.md` — documented PLC/register contract and simulation-only scope.
+- `chem_shield_p1/data/store.py` — SQLite schema for physical telemetry and common events.
+- `chem_shield_p1/README.md` — documented PLC/register contract and simulation-only scope.
 
 This Part 2 / 3 code does not modify those contracts. It reads fixture data and emits normalized events for offline analysis.
 
@@ -58,15 +58,15 @@ These are explicitly not implemented in this patch and are not claimed as suppor
 - Live Suricata daemon integration.
 - Direct ingest from industrial PLC networks or production SIEM systems.
 - Live Modbus monitoring over untrusted OT networks.
-- SQLite writes into the physical telemetry tables in `chem_shield/data/store.py`.
+- SQLite writes into the physical telemetry tables in `chem_shield_p1/data/store.py`.
 
 ## Offline replay and normalization
 
 Run the offline replay from the repository root:
 
 ```bash
-cd /Users/moonlit-night/Desktop/CHEM-SHIELD-
-python3 -m chem_shield_p2.replay_events --input chem_shield_p2/fixtures/sample_network_events.json --pretty
+python3 -m chem_shield_p2.replay_events \
+  --input chem_shield_p2/fixtures/sample_network_events.json --pretty
 ```
 
 ## Tests
@@ -74,9 +74,19 @@ python3 -m chem_shield_p2.replay_events --input chem_shield_p2/fixtures/sample_n
 From the repository root:
 
 ```bash
-cd /Users/moonlit-night/Desktop/CHEM-SHIELD-
 python3 -m unittest discover -s chem_shield_p2/tests -v
 ```
+
+## Part 4 handoff
+
+The replay/adapters remain offline and do not POST events automatically. A
+consumer may submit adapter output to the Part 1 HMI's
+`POST /api/risk/events` endpoint. The adapter's event `source` is sufficient
+for network-category inference, and its original connection/Modbus evidence is
+retained. Fixture adapter events have no `anomaly_score`, so they
+are stored as `UNASSESSED`; do not invent scores. Submit a score from the
+separate network-flow model only when it has actually scored the matching record.
+See [Part 4's input contract](../chem_shield_p4/correlation/README.md).
 
 ## Part 3: separate network anomaly model
 
@@ -87,7 +97,6 @@ Important: these anomaly scores are not probability-of-attack values. They are r
 To reproduce the network-model check:
 
 ```bash
-cd /Users/moonlit-night/Desktop/CHEM-SHIELD-
 python3 - <<'PY'
 import json
 from pathlib import Path
@@ -134,4 +143,4 @@ Those dependencies are optional here because the code remains fixture-driven and
 - Scripts read JSON/JSONL fixtures offline.
 - No remote endpoints are contacted.
 - No unauthorized scans or production OT traffic are generated.
-- This implementation preserves the existing physical process telemetry and Modbus PLC contract by not touching the `chem_shield` Part 1 runtime.
+- This implementation preserves the existing physical process telemetry and Modbus PLC contract by not touching the Part 1 runtime.

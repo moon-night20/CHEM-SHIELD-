@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, List, Tuple
 
+from chem_shield_p4.risk_engine.risk_engine import RiskValidationError
+
 from models import ALLOWED_EVENT_TYPES, AnomalyEvent
 
 
@@ -123,10 +125,6 @@ class EventValidator:
                 f"anomaly_score {score} is outside the allowed range 0.0–1.0."
             )
         return score
-
-
-class RiskValidationError(ValueError):
-    """Raised when a correlated incident cannot be scored."""
 
 
 class RiskInputValidator:

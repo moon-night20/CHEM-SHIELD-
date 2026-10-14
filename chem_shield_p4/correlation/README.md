@@ -1,127 +1,164 @@
-# CHEM-SHIELD Part 4 — Correlation Engine
+# Part 4: Event Correlation, Risk, and HMI Integration
 
-This folder is **only** the correlation engine.
+Part 4 consumes already-normalized detections from the separate network and
+physical-process detectors. It groups events and computes a transparent
+experimental risk score. It does not operate a PLC, infer that an event is an
+attack, or automatically remediate anything.
 
-It does **not** rebuild:
+## Compatibility and architecture
 
-- the network anomaly detector
-- the physical / process anomaly detector
+The canonical risk implementation is
+[`../risk_engine/`](../risk_engine/). The former
+[`../risk engin/`](../risk%20engin/) modules and
+[`risk_engine.py`](./risk_engine.py) are compatibility paths. Existing
+correlation, physical telemetry, and Part 1 SQLite tables remain in place.
 
-Those detectors are built by other teammates. This module **accepts their outputs** and groups related events into incidents.
+```text
+Part 2 network detections and flow scores ─┐
+                                           ├─ POST /api/risk/events -> normalize
+Part 3 physical ML scores ─────────────────┤                         -> correlate
+Part 1/5 OT detections ────────────────────┘                         -> risk engine
+                                                                     -> SQLite + HMI
+```
 
-Risk scoring is also **not** implemented here. See `risk_engine.py` for the later interface.
+Part 2, Part 3, and Part 5 are not automatically connected as background
+services. A configured producer or operator must submit records to the HMI API.
 
-## What it does
+## Event input
 
-Rule-based correlation (no AI / no machine learning):
-
-1. Events must share the same `asset_id`.
-2. After sorting by timestamp, an event joins the current incident for that asset if it is within the **correlation time window** of the previous event.
-3. Default window = **10 seconds** (change it; do not hard-code it in call sites).
-
-## Expected event format
+Submit one event or `{"events": [...]}` to `POST /api/risk/events`:
 
 ```json
 {
-  "timestamp": "2026-09-18T09:31:01",
-  "asset_id": "PLC_01",
-  "event_type": "network",
-  "anomaly_score": 0.70
+  "event_id": "demo-physical-01",
+  "timestamp": "2026-10-14T09:30:04Z",
+  "source": "ot_monitor",
+  "asset_id": "PLC-01",
+  "event_type": "temperature_high",
+  "severity": "high",
+  "evidence": "Synthetic demonstration only",
+  "anomaly_score": 0.90,
+  "measurements": {"temperature": 92.0, "unit": "degC"}
 }
 ```
 
-`event_type` must be `"network"` or `"physical"`.  
-`anomaly_score` must be a number from `0.0` to `1.0`.  
-`timestamp` must be ISO-8601, for example `2026-09-18T09:31:01`.
+`asset_id` may be supplied as `machine_id`. ISO-8601 timestamps are normalized
+to UTC. The event category may be set explicitly using
+`event_category: "network"` or `"physical"`; otherwise it is inferred from
+recognized source names (`zeek`, `suricata`, `modbus`, `os_security`,
+`network_*`, `ot_*`, `physical_*`, or `plc_*`). The original `event_type`,
+evidence, measurements, severity, and other JSON details are retained.
 
-## How another teammate sends detector output
+An optional detector score must be finite and in `[0, 1]`. It is a detector
+score, **not an attack probability**. If a rule event has no score, it is still
+correlated and persisted, but its incident is `UNASSESSED`; the pipeline does
+not manufacture a zero score. Missing modalities in an otherwise scored
+incident continue to contribute zero under the pre-existing Part 4 formula.
+That formula does not establish whether a detector/source is healthy; the
+input status is reported separately.
 
-```python
-from correlation_engine import CorrelationEngine
+Duplicate event IDs are suppressed across request batches. Events are grouped
+by asset when adjacent timestamps are no more than 10 seconds apart. An event
+close to an active incident extends that incident; the stored score is
+recomputed using the maximum available score per modality. A later score may
+escalate the incident. Acknowledgement is recorded separately and does not
+lower risk or resolve an incident. There is intentionally no automatic
+resolution path.
 
-network_and_physical_events = [
-    {"timestamp": "2026-09-18T09:31:01", "asset_id": "PLC_01", "event_type": "network", "anomaly_score": 0.70},
-    {"timestamp": "2026-09-18T09:31:04", "asset_id": "PLC_01", "event_type": "physical", "anomaly_score": 0.82},
-]
+## Existing risk calculation
 
-engine = CorrelationEngine(time_window_seconds=10)
-incidents, errors = engine.correlate(network_and_physical_events)
+The canonical `RiskEngine` preserves the existing project parameters:
 
-for incident in incidents:
-    print(incident.to_dict())
+```text
+base_risk  = 0.40 * network_score + 0.60 * physical_score
+final_risk = base_risk * asset_criticality
 ```
 
-Invalid events are skipped and returned in `errors`. Valid events are still correlated.
+Default criticality is `1.0`. The classification boundaries remain:
 
-Later, pass incidents into the risk engine:
+| Final score | Classification |
+| --- | --- |
+| `< 0.30` | LOW |
+| `0.30` to `< 0.60` | MEDIUM |
+| `0.60` to `< 0.80` | HIGH |
+| `>= 0.80` | CRITICAL |
 
-```python
-from risk_engine import RiskEngine
+These weights, boundaries, and default criticality are experimental CHEM-SHIELD
+settings, not validated safety limits or cybersecurity standards. Scores are
+bounded to `[0, 1]`; high scores are not calibrated probabilities.
 
-# Not implemented in Version 1:
-# RiskEngine().calculate_risk(incident)
-```
+## API and persistence
 
-## Run in VS Code
+- `GET /api/risk` — highest active assessed risk, active/recent incidents,
+  ingest status, score scale, and explicit non-probability declaration.
+- `POST /api/risk/events` — validate, normalize, correlate, score, and persist
+  submitted events. Mixed valid/invalid batches return per-event errors.
+- `GET /api/incidents?limit=50&active=true` — incident history.
+- `GET /api/incidents/<incident_id>` — incident evidence and lifecycle state.
+- `POST /api/incidents/<incident_id>/acknowledge` — record the operator and
+  timestamp; does not clear the alert.
 
-1. Open this folder: `chem_shield_part4`
-2. Open a terminal in VS Code
-3. Run:
+The HMI adds `risk_incidents`, `risk_events`, and `risk_ingest_state` tables to
+the configured SQLite file. Its existing `telemetry` and `events` schemas are
+unchanged. The risk register stores evidence and survives HMI restarts.
+
+The Flask application has no authentication layer. Bind it to `127.0.0.1` and
+use sanitized fixtures only; do not expose it to production networks.
+
+## Run the local HMI and send a synthetic example
+
+From the repository root, use the Part 1 virtual environment:
 
 ```bash
-python main.py
+chem_shield_p1/.venv/bin/python -m chem_shield_p1.hmi.app \
+  --host 127.0.0.1 --port 15000 --plc-port 5020 \
+  --database chem_shield_p1/data/telemetry.db
 ```
 
-Optional:
+The HMI can report an unavailable PLC independently of the Part 4 risk API. For
+a local synthetic event test:
 
 ```bash
-python main.py --window 10 --input sample_data.json
+curl -X POST http://127.0.0.1:15000/api/risk/events \
+  -H 'Content-Type: application/json' \
+  -d '{"events":[{"event_id":"demo-net-01","timestamp":"2026-10-14T09:30:00Z","source":"network_model","asset_id":"PLC-01","event_type":"network_anomaly","anomaly_score":0.9,"evidence":"synthetic"},{"event_id":"demo-ot-01","timestamp":"2026-10-14T09:30:04Z","source":"ot_monitor","asset_id":"PLC-01","event_type":"temperature_high","anomaly_score":0.9,"evidence":"synthetic"}]}'
 ```
 
-The demo prints:
-
-```
-INPUT EVENTS
-→ CORRELATED INCIDENTS
-→ INCIDENT DETAILS
-```
-
-## Run tests
+This illustrative pair produces `0.40*0.9 + 0.60*0.9 = 0.90` and
+`CRITICAL` under the configured experimental defaults. It is not a measured
+result. To acknowledge an incident, use its returned ID:
 
 ```bash
-python -m unittest discover -s tests -v
+curl -X POST http://127.0.0.1:15000/api/incidents/INC-ID/acknowledge \
+  -H 'Content-Type: application/json' -d '{"acknowledged_by":"operator"}'
 ```
 
-## Sample story in `sample_data.json`
+## Tests
 
-| Time | Asset | Type | Score | Result |
-|------|-------|------|-------|--------|
-| 09:31:01 | PLC_01 | network | 0.70 | Incident 1 |
-| 09:31:04 | PLC_01 | physical | 0.82 | Incident 1 |
-| 09:31:08 | PLC_01 | physical | 0.91 | Incident 1 |
-| 09:32:30 | PLC_01 | network | 0.80 | New incident (outside 10s window) |
-| 09:31:05 | PLC_02 | network | 0.65 | Separate incident (different asset) |
-| 09:31:07 | PLC_02 | physical | 0.88 | Same PLC_02 incident |
+```bash
+chem_shield_p1/.venv/bin/python -m unittest discover \
+  -s chem_shield_p4/correlation/tests -v
+chem_shield_p1/.venv/bin/python -m unittest discover \
+  -s 'chem_shield_p4/risk engin/tests' -v
+chem_shield_p1/.venv/bin/python -m unittest discover \
+  -s chem_shield_p4/risk_engine/tests -v
+chem_shield_p1/.venv/bin/python -m unittest discover \
+  -s chem_shield_p1/hmi/tests -v
+```
 
-PLC_01 incident 1:
+Tests cover grouping, score calculation and validation, unscored events,
+deduplication, escalation, additive SQLite storage, acknowledgements, and HMI
+routes with a deliberately disconnected loopback PLC.
 
-- Events: 3
-- Network present: true
-- Physical present: true
-- Start: 09:31:01
-- End: 09:31:08
-- Duration: 7 seconds
-- Max network score: 0.70
-- Max physical score: 0.91
+## Integration status and limitations
 
-## Files
+Completed: canonical risk engine; compatibility wrappers; event normalization
+and correlation; deduplication; additive SQLite incident/event persistence;
+history/detail/acknowledgement API; HMI risk summary, evidence register,
+severity filtering, acknowledgement, and high/critical notification dialog.
 
-| File | Role |
-|------|------|
-| `models.py` | `AnomalyEvent` and `Incident` |
-| `validator.py` | Input checks |
-| `correlation_engine.py` | Rule-based grouping |
-| `risk_engine.py` | Empty interface for later |
-| `main.py` | Command-line demo |
-| `sample_data.json` | Example detector output |
-| `tests/` | Unit tests |
+Not connected automatically: Part 2/3/5 producers do not stream in the
+background; an event producer must POST normalized records. There is no source
+heartbeat contract, source-specific score calibration, authentication, manual
+resolution workflow, or production-device integration. Part 2 flow scores and Part 3/5 process alerts remain distinct from the
+original Part 1 physical model and PLC simulator.

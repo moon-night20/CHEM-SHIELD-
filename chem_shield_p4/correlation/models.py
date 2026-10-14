@@ -11,8 +11,8 @@ into an Incident.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from typing import List, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional
 
 
 # The only event types this version of the correlation engine understands.
@@ -26,16 +26,31 @@ class AnomalyEvent:
     timestamp: datetime
     asset_id: str
     event_type: str
-    anomaly_score: float
+    anomaly_score: Optional[float]
+    event_id: Optional[str] = None
+    source: Optional[str] = None
+    severity: Optional[str] = None
+    evidence: Any = None
+    details: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         """Convert to a JSON-friendly dictionary."""
-        return {
-            "timestamp": self.timestamp.isoformat(),
+        result = {
+            "timestamp": self.timestamp.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
             "asset_id": self.asset_id,
             "event_type": self.event_type,
             "anomaly_score": self.anomaly_score,
         }
+        for key, value in (
+            ("event_id", self.event_id),
+            ("source", self.source),
+            ("severity", self.severity),
+            ("evidence", self.evidence),
+        ):
+            if value is not None:
+                result[key] = value
+        result.update(self.details)
+        return result
 
 
 @dataclass
@@ -85,7 +100,7 @@ class Incident:
         scores = [
             event.anomaly_score
             for event in self.events
-            if event.event_type == "network"
+            if event.event_type == "network" and event.anomaly_score is not None
         ]
         return max(scores) if scores else None
 
@@ -94,7 +109,7 @@ class Incident:
         scores = [
             event.anomaly_score
             for event in self.events
-            if event.event_type == "physical"
+            if event.event_type == "physical" and event.anomaly_score is not None
         ]
         return max(scores) if scores else None
 

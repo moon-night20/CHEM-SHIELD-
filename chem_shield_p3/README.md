@@ -2,11 +2,11 @@
 
 ## Purpose and scope
 
-This directory contains only the AI/ML physical-process anomaly detector for the CHEM-SHIELD academic prototype. It answers one limited question:
+This directory contains the AI/ML physical-process anomaly detector for the CHEM-SHIELD academic prototype. It answers one limited question:
 
 > Does the current physical/process telemetry look anomalous compared with learned normal behavior?
 
-The component is intentionally limited to simulated motor telemetry and an Isolation Forest baseline. It does not implement network monitoring, Modbus inspection, correlation, risk scoring or levels, dashboards, automated response, PLC control, or any interaction with real industrial, military, or other operational systems.
+The detector is intentionally limited to simulated motor telemetry and an Isolation Forest baseline. It does not implement network monitoring, Modbus inspection, correlation, risk scoring, automated response, PLC control, or any interaction with real industrial, military, or other operational systems. Part 4 separately accepts normalized events and renders risk in the Part 1 HMI.
 
 **The AI/ML component does not determine overall cybersecurity risk. It provides physical-process anomaly evidence to the separate correlation and risk-engine components.**
 
@@ -62,7 +62,7 @@ Training uses only normal-operation telemetry with scikit-learn's `IsolationFore
 ## Project layout
 
 ```text
-AI_ML/
+chem_shield_p3/
 ├── README.md
 ├── requirements.txt
 ├── src/
@@ -87,9 +87,11 @@ The historical top-level script names are compatibility entry points. Use `scrip
 
 ## Setup
 
+From the repository root, install the Part 3 dependencies in the environment
+used to run the detector:
+
 ```bash
-cd AI_ML
-python3 -m pip install -r requirements.txt
+python3 -m pip install -r chem_shield_p3/requirements.txt
 ```
 
 ## Training and inference
@@ -97,6 +99,7 @@ python3 -m pip install -r requirements.txt
 Training and inference are deliberately separate: normal telemetry is used to train once, and new telemetry uses the persisted model without retraining.
 
 ```bash
+cd chem_shield_p3
 # Optional: regenerate controlled synthetic inputs
 python3 scripts/generate_normal_data.py
 python3 scripts/generate_test_scenarios.py
@@ -171,6 +174,29 @@ events = detector.predict(pd.read_csv("data/test_scenarios.csv"), stream_column=
 ```
 
 For a newly independent single-observation stream, call `detector.reset_stream()` first. Alternatively, provide `previous_state` containing `motor_speed`, `temperature`, and `vibration` when the preceding state is managed by another component.
+
+## Part 4 handoff
+
+There is no automatic producer-to-HMI connection. To submit a detector result,
+POST the normalized event to Part 1's `POST /api/risk/events` endpoint. Preserve
+the detector's actual `[0,1]` `anomaly_score`; it is not a probability. Convert
+the detector timestamp to an ISO-8601 UTC string if needed. For example:
+
+```json
+{
+  "timestamp": "2026-10-14T09:30:04Z",
+  "source": "physical_ml",
+  "asset_id": "MOTOR-01",
+  "event_type": "physical_ml_anomaly",
+  "anomaly_score": 0.91,
+  "evidence": {"model": "IsolationForest", "is_anomaly": true}
+}
+```
+
+Part 4 retains this evidence, classifies the source as physical, and correlates
+it with events for the same asset in its configured time window. The example
+value illustrates the output shape only; it is not a measured result. See
+[Part 4's integration and risk semantics](../chem_shield_p4/correlation/README.md).
 
 ## Controlled evaluation
 

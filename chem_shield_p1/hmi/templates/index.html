@@ -22,6 +22,23 @@
         <div class="network-status" id="network-status"><span class="status-dot"></span><span id="network-status-label">DISCONNECTED</span></div>
         <div class="network-actions"><button id="connect-device">CONNECT</button><button id="disconnect-device">DISCONNECT</button><button id="reconnect-device">RECONNECT</button></div>
       </section>
+      <section class="risk-panel panel" aria-labelledby="risk-heading">
+        <div class="risk-heading">
+          <div><p class="eyebrow">PART 4 / CORRELATED DETECTIONS</p><h2 id="risk-heading">Incident risk</h2></div>
+          <span class="risk-badge unassessed" id="risk-badge" aria-live="polite">UNASSESSED</span>
+        </div>
+        <div class="risk-summary">
+          <div><span class="risk-label">HIGHEST ACTIVE RISK</span><strong id="risk-score">--</strong><small>0.0-1.0 scale; not a probability</small></div>
+          <div><span class="risk-label">ALERT INPUT</span><strong class="risk-input" id="risk-input-status">NOT CONNECTED</strong><small id="risk-last-update">No risk events received</small></div>
+          <p class="risk-note">Risk is assessed only when a detector supplies a validated anomaly score. Rule alerts without a score remain visible as UNASSESSED. Acknowledgement does not lower risk or resolve an incident.</p>
+        </div>
+        <div class="incident-heading"><div><p class="eyebrow">PERSISTENT INCIDENT REGISTER</p><h3>Incidents</h3></div>
+          <label class="incident-filter" for="incident-filter">SHOW
+            <select id="incident-filter"><option value="all">ALL</option><option value="active">ACTIVE</option><option value="unacknowledged">UNACKNOWLEDGED</option><option value="critical">CRITICAL</option><option value="high">HIGH</option><option value="medium">MEDIUM</option><option value="low">LOW</option><option value="unassessed">UNASSESSED</option></select>
+          </label>
+        </div>
+        <div class="incident-list" id="incident-list" aria-live="polite"><p class="incident-empty">Waiting for risk event input.</p></div>
+      </section>
       <section class="monitor-panel">
         <div class="monitor-heading"><div><p class="eyebrow">SCADA PROCESS MONITOR / M-01</p><h2>Virtual machine line</h2></div><div class="flow-state"><span class="state-badge stopped" id="state-badge"><span class="state-light"></span><span id="state-label">STOPPED</span></span><span class="trend-window" id="trend-window">0 RECORDS</span></div></div>
         <section class="monitor-body">
@@ -38,6 +55,12 @@
       </section>
     </main>
   </div>
+  <dialog id="risk-alert-dialog" class="risk-alert-dialog" aria-labelledby="risk-alert-title">
+    <p class="eyebrow">OPERATOR ATTENTION REQUIRED</p>
+    <h2 id="risk-alert-title">HIGH RISK INCIDENT</h2>
+    <p id="risk-alert-message"></p>
+    <div class="risk-alert-actions"><button id="risk-alert-ack">ACKNOWLEDGE</button><button id="risk-alert-close">CLOSE</button></div>
+  </dialog>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>

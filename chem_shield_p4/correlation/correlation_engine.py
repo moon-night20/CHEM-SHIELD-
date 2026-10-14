@@ -13,11 +13,16 @@ Version 1 rules (no AI / no machine learning):
 
 from __future__ import annotations
 
+import math
 from datetime import timedelta
 from typing import Any, Dict, List, Tuple
 
-from models import AnomalyEvent, Incident
-from validator import EventValidator, ValidationError
+try:
+    from .models import AnomalyEvent, Incident
+    from .validator import EventValidator, ValidationError
+except ImportError:
+    from models import AnomalyEvent, Incident
+    from validator import EventValidator, ValidationError
 
 
 DEFAULT_TIME_WINDOW_SECONDS = 10.0
@@ -27,8 +32,13 @@ class CorrelationEngine:
     """Rule-based correlator for network + physical anomaly events."""
 
     def __init__(self, time_window_seconds: float = DEFAULT_TIME_WINDOW_SECONDS) -> None:
-        if time_window_seconds <= 0:
-            raise ValueError("time_window_seconds must be greater than 0.")
+        if (
+            isinstance(time_window_seconds, bool)
+            or not isinstance(time_window_seconds, (int, float))
+            or not math.isfinite(float(time_window_seconds))
+            or time_window_seconds <= 0
+        ):
+            raise ValueError("time_window_seconds must be a finite number greater than 0.")
         self.time_window_seconds = float(time_window_seconds)
         self.validator = EventValidator()
         self._incident_counter = 0
@@ -58,6 +68,15 @@ class CorrelationEngine:
 
         # Safety sort: detectors might not always send events in time order.
         sorted_events = sorted(events, key=lambda event: (event.timestamp, event.asset_id))
+        seen_ids = set()
+        unique_events = []
+        for event in sorted_events:
+            if event.event_id and event.event_id in seen_ids:
+                continue
+            if event.event_id:
+                seen_ids.add(event.event_id)
+            unique_events.append(event)
+        sorted_events = unique_events
 
         open_incidents: Dict[str, Incident] = {}
         closed_incidents: List[Incident] = []
