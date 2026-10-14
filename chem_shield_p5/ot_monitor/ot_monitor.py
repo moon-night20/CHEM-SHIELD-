@@ -14,6 +14,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 import pandas as pd
 from chem_shield_p3.src.detector import PhysicalAnomalyDetector
+from chem_shield_p3.src.features import map_telemetry_reading
 
 from chem_shield_common.publisher import DEFAULT_HMI_URL, publish_events
 from .event_normalizer import normalize_ot_event, rule_alert_to_event
@@ -207,9 +208,7 @@ class OTMonitor:
                 {
                     "timestamp": reading.timestamp.isoformat(),
                     "asset_id": reading.asset_id,
-                    "motor_speed": reading.measurements["speed"],
-                    "temperature": reading.measurements["temperature"],
-                    "vibration": reading.measurements["vibration"],
+                    **map_telemetry_reading(reading.measurements),
                 }
                 for reading in scorable_readings
             ])

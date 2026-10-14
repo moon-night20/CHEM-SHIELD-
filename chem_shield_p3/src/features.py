@@ -23,6 +23,25 @@ RATE_SOURCE_COLUMNS = {
     "speed_rate": "motor_speed",
 }
 
+# Explicit shared mapping from OT telemetry measurement keys to P3 model feature names
+TELEMETRY_TO_FEATURE_MAP = {
+    "speed": "motor_speed",
+    "motor_speed": "motor_speed",
+    "temperature": "temperature",
+    "vibration": "vibration",
+}
+
+
+def map_telemetry_reading(measurements: Mapping[str, Any]) -> dict[str, float]:
+    """Map raw telemetry measurements (e.g. from P5 reading) to P3 feature names."""
+    result = {}
+    for source_key, target_key in TELEMETRY_TO_FEATURE_MAP.items():
+        if source_key in measurements and target_key not in result:
+            val = measurements[source_key]
+            if val is not None:
+                result[target_key] = float(val)
+    return result
+
 
 class TelemetryValidationError(ValueError):
     """Raised when telemetry cannot be safely transformed into ML features."""

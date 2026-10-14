@@ -10,6 +10,7 @@ from typing import Any
 import joblib
 import numpy as np
 import pandas as pd
+import sklearn
 from sklearn.ensemble import IsolationForest
 from sklearn.exceptions import NotFittedError
 
@@ -48,6 +49,8 @@ class PhysicalAnomalyDetector:
         self.feature_columns = list(FEATURE_COLUMNS)
         self.score_lower: float | None = None
         self.score_upper: float | None = None
+        self.score_boundary: float | None = None
+        self.score_scale: float | None = None
         self.training_metadata: dict[str, Any] = {}
         self._stream_state: dict[str, float] | None = None
         self._is_fitted = False
@@ -98,9 +101,15 @@ class PhysicalAnomalyDetector:
 
         self.score_lower = float(lower)
         self.score_upper = float(upper)
+        boundary_evidence = -float(self.model.offset_)
+        self.score_boundary = float(boundary_evidence)
+        std = float(training_evidence.std())
+        self.score_scale = float(std) if std > 1e-6 else max(1e-6, float(upper - lower) / 4.0)
+
         self.training_metadata = {
             "artifact_version": ARTIFACT_VERSION,
             "model": MODEL_NAME,
+            "sklearn_version": getattr(sklearn, "__version__", "unknown"),
             "trained_at_utc": datetime.now(timezone.utc).isoformat(),
             "training_rows": int(len(prepared)),
             "feature_columns": self.feature_columns,
@@ -113,8 +122,8 @@ class PhysicalAnomalyDetector:
                 "edge gaps use the nearest observed value."
             ),
             "score_calibration": (
-                "anomaly_score scales negated Isolation Forest score_samples using the "
-                "observed minimum and maximum from normal training telemetry."
+                "anomaly_score applies a smooth sigmoid mapping around the native Isolation "
+                "Forest decision boundary to avoid score saturation at 1.0."
             ),
         }
         self._stream_state = None
@@ -133,20 +142,24 @@ class PhysicalAnomalyDetector:
     def _normalized_score(self, features: pd.DataFrame) -> np.ndarray:
         self._require_fitted()
         evidence = -self.model.score_samples(features)
-        denominator = self.score_upper - self.score_lower
-        return np.clip((evidence - self.score_lower) / denominator, 0.0, 1.0)
+        boundary = (
+            self.score_boundary
+            if self.score_boundary is not None
+            else -float(self.model.offset_)
+        )
+        scale = getattr(self, "score_scale", None)
+        if scale is None or scale <= 0:
+            denom = self.score_upper - self.score_lower if self.score_upper is not None and self.score_lower is not None else 1.0
+            scale = max(1e-6, denom / 4.0)
+        z = np.clip((evidence - boundary) / scale, -60.0, 60.0)
+        return 1.0 / (1.0 + np.exp(-z))
 
     @property
     def normalized_native_threshold(self) -> float:
         """Display-only score location of the native Isolation Forest boundary."""
 
         self._require_fitted()
-        # IsolationForest's decision_function boundary is exactly zero. Since
-        # decision_function = score_samples - offset_, this is the equivalent
-        # negated score_samples evidence at the native binary boundary.
-        boundary_evidence = -float(self.model.offset_)
-        denominator = self.score_upper - self.score_lower
-        return float(np.clip((boundary_evidence - self.score_lower) / denominator, 0.0, 1.0))
+        return 0.5
 
     def _resolve_asset_ids(
         self, prepared: pd.DataFrame, asset_id: str | None
@@ -276,6 +289,8 @@ class PhysicalAnomalyDetector:
                 "feature_columns": self.feature_columns,
                 "score_lower": self.score_lower,
                 "score_upper": self.score_upper,
+                "score_boundary": self.score_boundary,
+                "score_scale": self.score_scale,
                 "training_metadata": self.training_metadata,
             },
             destination,
@@ -317,6 +332,13 @@ class PhysicalAnomalyDetector:
         detector.feature_columns = list(payload["feature_columns"])
         detector.score_lower = float(payload["score_lower"])
         detector.score_upper = float(payload["score_upper"])
+        detector.score_boundary = float(payload.get("score_boundary", -float(detector.model.offset_)))
+        detector.score_scale = float(
+            payload.get(
+                "score_scale",
+                max(1e-6, (detector.score_upper - detector.score_lower) / 4.0),
+            )
+        )
         detector.training_metadata = dict(payload["training_metadata"])
         detector._is_fitted = True
         return detector
