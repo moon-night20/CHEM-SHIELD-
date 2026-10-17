@@ -1,0 +1,10 @@
+[
+  {
+    "incident_id": "INC-0001",
+    "risk_level": "CRITICAL",
+    "risk_score": 0.804,
+    "rule_alerts": [],
+    "sensor_validation_issues": [],
+    "rule_confirmation": false
+  }
+]

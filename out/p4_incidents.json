@@ -1,0 +1,117 @@
+[
+  {
+    "incident_id": "INC-0001",
+    "asset_id": "PLC-01",
+    "start_time": "2026-10-14T10:00:14+00:00",
+    "end_time": "2026-10-14T10:00:20+00:00",
+    "risk_level": "CRITICAL",
+    "risk_score": 0.804,
+    "events": [
+      {
+        "timestamp": "2026-10-14T10:00:14Z",
+        "asset_id": "PLC-01",
+        "event_type": "network",
+        "anomaly_score": 0.9963002965743031,
+        "event_id": "56c36061cf9ea2f5",
+        "source": "zeek",
+        "severity": "medium",
+        "evidence": {
+          "src_ip": "192.168.2.10",
+          "dst_ip": "10.10.10.5",
+          "src_port": 50102,
+          "dst_port": 502,
+          "protocol": "tcp",
+          "service": "modbus",
+          "duration_seconds": 0.12,
+          "orig_pkts": 40,
+          "resp_pkts": 32,
+          "orig_bytes": 2000,
+          "resp_bytes": 1500,
+          "conn_state": "SF",
+          "uid": null,
+          "history": "ShADadFf",
+          "source": "zeek",
+          "id.orig_h": "192.168.2.10",
+          "id.orig_p": 50102,
+          "id.resp_h": "10.10.10.5",
+          "id.resp_p": 502,
+          "proto": "tcp",
+          "duration": 0.12,
+          "adapter_event_type": "connection",
+          "model": "NetworkIsolationForest"
+        }
+      },
+      {
+        "timestamp": "2026-10-14T10:00:15Z",
+        "asset_id": "PLC-01",
+        "event_type": "network",
+        "anomaly_score": 0.9989396116980802,
+        "event_id": "611b35c4ed7bd8a0",
+        "source": "suricata",
+        "severity": "high",
+        "evidence": {
+          "src_ip": "192.168.2.10",
+          "dst_ip": "10.10.10.5",
+          "src_port": 50102,
+          "dst_port": 502,
+          "proto": "TCP",
+          "signature_id": 2020123,
+          "signature": "ET SCADA Modbus Read Coils",
+          "category": "alert",
+          "app_proto": "modbus",
+          "packet_count": 80,
+          "byte_count": 3200,
+          "state": "established",
+          "source": "suricata",
+          "dest_ip": "10.10.10.5",
+          "dest_port": 502,
+          "flow": {
+            "state": "established",
+            "pkts_toserver": 80,
+            "pkts_toclient": 64,
+            "bytes_toserver": 3200,
+            "bytes_toclient": 2800
+          },
+          "alert": {
+            "signature": "ET SCADA Modbus Read Coils",
+            "category": "alert",
+            "severity": "high",
+            "signature_id": 2020123
+          },
+          "adapter_event_type": "alert",
+          "model": "NetworkIsolationForest"
+        }
+      },
+      {
+        "timestamp": "2026-10-14T10:00:20Z",
+        "asset_id": "PLC-01",
+        "event_type": "physical",
+        "anomaly_score": 0.6740949655212328,
+        "event_id": "P3-b39163b6d465f9a9",
+        "source": "physical_ml",
+        "severity": "medium",
+        "evidence": {
+          "model": "IsolationForest",
+          "model_decision_score": -0.04342553626095702,
+          "score_interpretation": "relative anomaly score; not a probability"
+        }
+      }
+    ],
+    "network_present": true,
+    "physical_present": true,
+    "risk_assessment": {
+      "incident_id": "INC-0001",
+      "asset_id": "PLC-01",
+      "network_score": 0.999,
+      "physical_score": 0.674,
+      "network_weight": 0.4,
+      "physical_weight": 0.6,
+      "asset_criticality": 1.0,
+      "base_risk": 0.804,
+      "final_risk": 0.804,
+      "risk_level": "CRITICAL",
+      "explanation": "Network anomaly contributed 0.400; physical anomaly contributed 0.404; asset criticality was 1.000; final risk score was 0.804 on a 0.0-1.0 scale. Risk level: CRITICAL.",
+      "score_scale": "0.0-1.0"
+    }
+  }
+]

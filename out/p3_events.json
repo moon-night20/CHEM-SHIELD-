@@ -1,0 +1,16 @@
+[
+  {
+    "event_id": "P3-b39163b6d465f9a9",
+    "timestamp": "2026-10-14T10:00:20Z",
+    "source": "physical_ml",
+    "asset_id": "PLC-01",
+    "event_type": "physical",
+    "anomaly_score": 0.6740949655212328,
+    "severity": "medium",
+    "evidence": {
+      "model": "IsolationForest",
+      "model_decision_score": -0.04342553626095702,
+      "score_interpretation": "relative anomaly score; not a probability"
+    }
+  }
+]
