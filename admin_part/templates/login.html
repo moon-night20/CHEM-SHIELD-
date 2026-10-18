@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CHEM-SHIELD Admin Login</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="login-page">
+  <main class="login-card">
+    <h1>CHEM-SHIELD</h1>
+    <p class="subtitle">Admin console - local incident review</p>
+    {% if account_setup_required %}
+      <section class="setup-notice" role="status">
+        <h2>No admin account is configured yet</h2>
+        <p>Create your own account from the project folder. The command will securely prompt for a password (minimum 10 characters); no default password is used.</p>
+        <code>python -m admin_part.manage_users create ADMIN_NAME --role administrator</code>
+      </section>
+    {% elif account_setup_error %}
+      <section class="setup-notice error" role="alert">
+        <h2>Admin account store is unavailable</h2>
+        <p>Check the server log for the user-store error before trying to sign in.</p>
+      </section>
+    {% endif %}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <p class="message {{ category }}">{{ message }}</p>
+      {% endfor %}
+    {% endwith %}
+    <form method="post" action="{{ url_for('login') }}" autocomplete="off">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label for="username">Username</label>
+      <input id="username" name="username" type="text" required autofocus>
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" required>
+      <button type="submit">Sign in</button>
+    </form>
+    <p class="notice">Authorized local users only. Access attempts are logged.</p>
+  </main>
+</body>
+</html>

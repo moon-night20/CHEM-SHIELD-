@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Incidents - CHEM-SHIELD{% endblock %}
+{% block content %}
+  <section class="page-heading">
+    <div>
+      <h1>Incident register</h1>
+      <p>Chain last updated: {{ chain_updated or "not available" }}</p>
+    </div>
+    <p class="safety-label">Simulation only - decisions are recorded, not executed.</p>
+  </section>
+  {% if errors %}
+    <section class="panel warning-panel" role="status">
+      <h2>Chain output unavailable</h2>
+      <ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul>
+      <p>Run: <code>python -m scripts.run_chain</code></p>
+    </section>
+  {% endif %}
+  <section class="panel">
+    <h2>Incidents</h2>
+    {% if incidents %}
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>ID</th><th>Asset</th><th>Risk</th><th>Score</th><th>Status</th></tr></thead>
+          <tbody>
+            {% for incident in incidents %}
+              <tr>
+                <td><a href="{{ url_for('incident_detail', incident_id=incident.incident_id) }}">{{ incident.incident_id }}</a></td>
+                <td>{{ incident.asset_id }}</td>
+                <td><span class="badge {{ incident.risk_level|lower }}">{{ incident.risk_level }}</span></td>
+                <td>{{ incident.risk_score if incident.risk_score is not none else "Unavailable" }}</td>
+                <td>{{ incident.status_record.status }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% elif not errors %}
+      <p class="empty-state">No incidents are present in the P4 chain output.</p>
+    {% else %}
+      <p class="empty-state">No incident data could be loaded. See the chain output message above.</p>
+    {% endif %}
+  </section>
+{% endblock %}

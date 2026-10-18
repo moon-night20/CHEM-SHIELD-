@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Audit log - CHEM-SHIELD{% endblock %}
+{% block content %}
+  <h1>Administrative audit log</h1>
+  <section class="panel">
+    <form method="get" class="filter-form">
+      <label for="user">Filter by username</label><input id="user" name="user" value="{{ user_filter }}">
+      <label for="action">Filter by action</label><input id="action" name="action" value="{{ action_filter }}">
+      <button type="submit">Filter</button>
+    </form>
+    {% if entries %}
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Time</th><th>User</th><th>Role</th><th>Source IP</th><th>Action</th><th>Incident</th><th>Details</th></tr></thead>
+          <tbody>
+            {% for entry in entries %}
+              <tr><td>{{ entry.timestamp }}</td><td>{{ entry.username }}</td><td>{{ entry.role }}</td>
+                <td>{{ entry.source_ip }}</td><td>{{ entry.action }}</td><td>{{ entry.incident_id or "" }}</td><td>{{ entry.detail }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}<p class="empty-state">No audit entries match.</p>{% endif %}
+  </section>
+{% endblock %}

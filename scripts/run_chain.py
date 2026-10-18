@@ -152,6 +152,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Pause before each stage in an interactive terminal; show boundaries otherwise",
     )
+    parser.add_argument(
+        "--admin-console",
+        action="store_true",
+        help="Print the local admin-console command after P5 succeeds",
+    )
     args = parser.parse_args(argv)
 
     if not math.isfinite(args.threshold) or not 0.0 <= args.threshold <= 1.0:
@@ -223,6 +228,8 @@ def main(argv: list[str] | None = None) -> int:
                     _read_stage_json(paths[4], "P5", validate_p5_report)
                     confirmations = sum(report["rule_confirmation"] for report in reports)
                     print(f"[P5] {confirmations} rule-confirmed incidents")
+                    if args.admin_console:
+                        print("Admin console: python -m admin_part.app -> http://127.0.0.1:5000")
             except (ContractError, OSError, ValueError, RuntimeError, TypeError, KeyError) as exc:
                 raise RuntimeError(f"Stage {stage} ({label}) failed: {exc}") from exc
 

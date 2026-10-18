@@ -4,3 +4,7 @@
 .DS_Store
 **/data/*.db
 chem_shield_p2/models/*.joblib
+out/
+admin_part/data/users.json
+admin_part/data/admin.db
+admin_part/data/events/*.jsonl

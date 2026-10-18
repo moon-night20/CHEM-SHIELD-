@@ -229,3 +229,29 @@ def test_p5_uses_no_model_or_persistence_adapters(tmp_path: Path) -> None:
     assert report[0]["rule_confirmation"] is bool(report[0]["rule_alerts"])
     assert validate_p5_report(json.loads(output_path.read_text(encoding="utf-8"))) == report
     assert not list(tmp_path.glob("*.db"))
+
+
+def test_admin_console_hint_is_printed_only_after_p5(tmp_path: Path, capsys) -> None:
+    completed = main([
+        "--network-input",
+        str(DEMO_NETWORK),
+        "--out-dir",
+        str(tmp_path / "complete"),
+        "--admin-console",
+    ])
+    completed_output = capsys.readouterr()
+    assert completed == 0
+    assert "Admin console: python -m admin_part.app -> http://127.0.0.1:5000" in completed_output.out
+
+    partial = main([
+        "--network-input",
+        str(DEMO_NETWORK),
+        "--out-dir",
+        str(tmp_path / "partial"),
+        "--to-stage",
+        "3",
+        "--admin-console",
+    ])
+    partial_output = capsys.readouterr()
+    assert partial == 0
+    assert "Admin console:" not in partial_output.out

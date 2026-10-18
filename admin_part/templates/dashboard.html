@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Incidents - CHEM-SHIELD{% endblock %}
+{% block content %}
+  <section class="page-heading">
+    <div>
+      <h1>Incident review</h1>
+      <p>Chain last updated: {{ chain_updated or "not available" }}</p>
+    </div>
+    <p class="safety-label">Simulation only - decisions are recorded, not executed.</p>
+  </section>
+  <section class="risk-banner" aria-label="Current risk summary">
+    <div>
+      <p class="eyebrow">SUPERVISORY RISK OVERVIEW</p>
+      <strong>
+        {% if counts.CRITICAL %}CRITICAL INCIDENTS REQUIRE REVIEW
+        {% elif counts.HIGH %}HIGH-RISK INCIDENTS REQUIRE REVIEW
+        {% elif incidents %}INCIDENTS UNDER REVIEW
+        {% else %}NO INCIDENTS REPORTED{% endif %}
+      </strong>
+    </div>
+    <a href="{{ url_for('incidents_page') }}">Open incident register</a>
+  </section>
+
+  {% if errors %}
+    <section class="panel warning-panel" role="status">
+      <h2>Chain output unavailable</h2>
+      <ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul>
+      <p>Run: <code>python -m scripts.run_chain</code></p>
+    </section>
+  {% endif %}
+
+  <section class="summary-grid" aria-label="Incident counts by risk level">
+    {% for level, count in counts.items() %}
+      <article class="summary-card {{ level|lower }}-card">
+        <span>{{ level }}</span><strong>{{ count }}</strong>
+      </article>
+    {% endfor %}
+  </section>
+
+  <section class="panel">
+    <h2>Incidents</h2>
+    {% if incidents %}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th><th>Asset</th><th>Risk</th><th>Score</th><th>Time window</th>
+              <th>Network / physical</th><th>Rule confirmation</th><th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for incident in incidents %}
+              <tr>
+                <td><a href="{{ url_for('incident_detail', incident_id=incident.incident_id) }}">{{ incident.incident_id }}</a></td>
+                <td>{{ incident.asset_id }}</td>
+                <td><span class="badge {{ incident.risk_level|lower }}">{{ incident.risk_level }}</span></td>
+                <td>{{ incident.risk_score if incident.risk_score is not none else "Unavailable" }}</td>
+                <td>{{ incident.start_time }}<br>to {{ incident.end_time }}</td>
+                <td>{{ incident.event_counts.network }} / {{ incident.event_counts.physical }}</td>
+                <td>
+                  {% if incident.rule_confirmation is none %}Unavailable
+                  {% elif incident.rule_confirmation %}Confirmed
+                  {% else %}Not confirmed{% endif %}
+                </td>
+                <td>{{ incident.status_record.status }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% elif not errors %}
+      <p class="empty-state">No incidents are present in the P4 chain output.</p>
+    {% else %}
+      <p class="empty-state">No incident data could be loaded. See the chain output message above.</p>
+    {% endif %}
+  </section>
+
+  {% if role != "operator" %}
+    <section class="panel">
+      <h2>Login-failure alerts</h2>
+      {% if login_alerts %}
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Time</th><th>User</th><th>Alert</th><th>Severity</th><th>Details</th></tr></thead>
+            <tbody>
+              {% for alert in login_alerts %}
+                <tr>
+                  <td>{{ alert.timestamp }}</td><td>{{ alert.source_ip }}</td>
+                  <td>{{ alert.event_type }}</td><td>{{ alert.severity }}</td><td>{{ alert.details }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="empty-state">No repeated login-failure alerts.</p>
+      {% endif %}
+    </section>
+  {% endif %}
+{% endblock %}

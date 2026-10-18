@@ -1,4 +1,5 @@
 import unittest
+import os
 from unittest.mock import patch
 from urllib.error import URLError
 
@@ -55,3 +56,21 @@ class PublisherTests(unittest.TestCase):
     def test_non_loopback_url_is_rejected_before_network_access(self):
         with self.assertRaisesRegex(ValueError, "127.0.0.1"):
             publish_events([], url="http://example.com/api/risk/events")
+
+    @patch(
+        "chem_shield_common.publisher._open_local",
+        return_value=FakeResponse(1),
+    )
+    def test_optional_ingest_token_header_is_sent_only_when_configured(self, open_local):
+        with patch.dict(os.environ, {}, clear=True):
+            publish_events([{"event_id": "without-token"}], retries=0)
+        request_without_token = open_local.call_args.args[0]
+        self.assertIsNone(request_without_token.get_header("X-ingest-token"))
+
+        with patch.dict(os.environ, {"CHEM_SHIELD_INGEST_TOKEN": "local-test-token"}, clear=True):
+            publish_events([{"event_id": "with-token"}], retries=0)
+        request_with_token = open_local.call_args.args[0]
+        self.assertEqual(
+            request_with_token.get_header("X-ingest-token"),
+            "local-test-token",
+        )

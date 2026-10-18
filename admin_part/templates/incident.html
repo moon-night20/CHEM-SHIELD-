@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Incident {{ incident.incident_id }} - CHEM-SHIELD{% endblock %}
+{% block content %}
+  <p><a href="{{ url_for('dashboard') }}">Back to incidents</a></p>
+  <section class="panel">
+    <div class="page-heading">
+      <div>
+        <h1>Incident {{ incident.incident_id }}</h1>
+        <p>{{ incident.asset_id }} - {{ incident.start_time }} to {{ incident.end_time }}</p>
+      </div>
+      <span class="badge {{ incident.risk_level|lower }}">{{ incident.risk_level }} / {{ incident.risk_score }}</span>
+    </div>
+    <p>Current status: <strong>{{ incident.status_record.status }}</strong></p>
+    {% if incident.status_record.note %}<p>Latest note: {{ incident.status_record.note }}</p>{% endif %}
+    <p>Chain last updated: {{ chain_updated or "not available" }}</p>
+    {% if errors %}
+      <div class="warning-panel"><h2>Chain output warning</h2><ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul></div>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <h2>Contributing network events</h2>
+    {% set network_events = incident.events|selectattr("event_type", "equalto", "network")|list %}
+    {% if network_events %}
+      {% for event in network_events %}<pre class="event-data">{{ event }}</pre>{% endfor %}
+    {% else %}<p class="empty-state">No network events.</p>{% endif %}
+  </section>
+
+  <section class="panel">
+    <h2>Contributing physical events</h2>
+    {% set physical_events = incident.events|selectattr("event_type", "equalto", "physical")|list %}
+    {% if physical_events %}
+      {% for event in physical_events %}<pre class="event-data">{{ event }}</pre>{% endfor %}
+    {% else %}<p class="empty-state">No physical events.</p>{% endif %}
+  </section>
+
+  <section class="panel">
+    <h2>P5 validation and rule results</h2>
+    <p>Rule confirmation:
+      {% if incident.rule_confirmation is none %}Unavailable
+      {% elif incident.rule_confirmation %}Yes
+      {% else %}No{% endif %}
+    </p>
+    <h3>Rule alerts</h3>
+    {% if incident.p5.get("rule_alerts") %}
+      {% for item in incident.p5.get("rule_alerts") %}<pre class="event-data">{{ item }}</pre>{% endfor %}
+    {% else %}<p class="empty-state">No rule alerts reported.</p>{% endif %}
+    <h3>Sensor validation issues</h3>
+    {% if incident.p5.get("sensor_validation_issues") %}
+      {% for item in incident.p5.get("sensor_validation_issues") %}<pre class="event-data">{{ item }}</pre>{% endfor %}
+    {% else %}<p class="empty-state">No validation issues reported.</p>{% endif %}
+  </section>
+
+  {% if can_act %}
+    <section class="panel">
+      <h2>Human decision log</h2>
+      <p class="safety-label">Simulation only - recorded, nothing is executed.</p>
+      <div class="action-grid">
+        {% for action, label in [("acknowledge", "Acknowledge"), ("escalate", "Escalate"), ("false_positive", "Mark false positive"), ("simulated_response", "Record simulated response")] %}
+          <form method="post" action="{{ url_for('incident_action', incident_id=incident.incident_id) }}" class="action-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="{{ action }}">
+            <label for="note-{{ action }}">Note{% if action != "acknowledge" %} (required, at least 5 characters){% else %} (optional){% endif %}</label>
+            <textarea id="note-{{ action }}" name="note" rows="3" {% if action != "acknowledge" %}required minlength="5"{% endif %}></textarea>
+            <button type="submit">{{ label }}</button>
+          </form>
+        {% endfor %}
+      </div>
+    </section>
+  {% else %}
+    <p class="notice">Operator access is read-only. Decisions and status changes are disabled.</p>
+  {% endif %}
+{% endblock %}

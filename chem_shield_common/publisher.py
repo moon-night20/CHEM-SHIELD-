@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from typing import Any, Iterable
 from urllib.error import HTTPError, URLError
@@ -89,10 +90,14 @@ def publish_events(
     }
     for batch_number, batch in enumerate(_batches(prepared, batch_size), start=1):
         result["batches"] += 1
+        headers = {"Content-Type": "application/json"}
+        ingest_token = os.environ.get("CHEM_SHIELD_INGEST_TOKEN")
+        if ingest_token:
+            headers["X-Ingest-Token"] = ingest_token
         request = Request(
             url,
             data=json.dumps({"events": batch}, allow_nan=False).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
+            headers=headers,
             method="POST",
         )
         batch_error = None

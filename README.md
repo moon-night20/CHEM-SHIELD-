@@ -134,3 +134,67 @@ fixture events, then prints the correlated scored incidents:
 
 Alternatively, omit `--start-hmi` when the HMI is already running on
 `127.0.0.1:15000`.
+
+## Admin console
+
+The operator machine HMI (`127.0.0.1:15000`) and supervisor admin console
+(`127.0.0.1:5000`) are separate pages and processes. The HMI's **Admin** link
+opens the console login in a new tab; the admin console has its own credentials
+and session, and provides a **Back to machine HMI** link. The admin console is
+the final, human-in-the-loop view of P4/P5 incidents. It reads
+`out/p4_incidents.json` and `out/p5_report.json`; it does not launch the
+pipeline or change its handoff files. Its Machine page is read-only and reports
+OFFLINE when the HMI is unreachable; START/STOP and test controls remain only
+in the operator HMI.
+
+```text
+P2 network scoring -> P3 physical ML -> P4 correlation/risk -> P5 OT validation -> Admin console
+```
+
+| Role | Permissions |
+| --- | --- |
+| administrator | Incidents, decisions, users, settings, and audit log |
+| analyst | View incidents, acknowledge, escalate, mark false positive, add notes, and record a simulated response |
+| operator | Read-only view of incidents affecting the process and their status |
+
+Create users locally with the commands below. No default password is shipped;
+the password is prompted for and stored only as a Werkzeug hash in the ignored
+`admin_part/data/users.json` file. The admin interface has its own stylesheet
+and login page.
+
+```bash
+python -m admin_part.manage_users create ADMIN_NAME --role administrator
+python -m admin_part.manage_users list
+python -m admin_part.manage_users delete USER_NAME
+```
+
+Generate a stable session secret for local use, then run the console:
+
+```bash
+export CHEM_SHIELD_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_hex(32))')"
+python -m scripts.run_chain
+python -m admin_part.app
+```
+
+Open `http://127.0.0.1:5000`. If chain outputs are absent or malformed, the
+console reports that state and shows the chain command. For optional P1 ingest
+authentication, set `CHEM_SHIELD_INGEST_TOKEN` for both the HMI and publisher
+processes. The console is simulation-only and loopback-only. Decisions,
+including a simulated response, are recorded in a local audit log and are
+never executed against equipment.
+
+The HMI's Admin link defaults to `http://127.0.0.1:5000`; set
+`CHEM_SHIELD_ADMIN_URL` to another `http://` or `https://` admin URL if needed.
+Set `CHEM_SHIELD_HMI_URL` to the reachable machine HMI URL (default
+`http://127.0.0.1:15000`) to configure the admin console's backlink and
+read-only Machine page. Only HTTP(S) URLs without credentials, query strings,
+or fragments are accepted. `CHEM_SHIELD_ADMIN_HOST` changes the admin bind
+address (default `127.0.0.1`). Non-loopback binding is refused unless
+`CHEM_SHIELD_ALLOW_REMOTE=1` and an explicit `CHEM_SHIELD_SECRET_KEY` are set;
+`CHEM_SHIELD_COOKIE_SECURE=1` enables the Secure session-cookie flag for HTTPS
+deployment. `CHEM_SHIELD_DEBUG=1` enables development debug mode.
+
+**Lab use only. Never expose this console or the machine HMI to the internet.**
+Remote binding is an explicit, warned exception for a protected lab network,
+not a production deployment mode. A link does not grant access, and the admin
+console never sends control commands to the machine.

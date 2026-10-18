@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}CHEM-SHIELD Admin{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <a class="brand" href="{{ url_for('dashboard') }}">CHEM-SHIELD / SUPERVISOR CONSOLE</a>
+      <p>Human-in-the-loop incident review - simulation only</p>
+    </div>
+    <nav class="user-panel" aria-label="Main navigation">
+      <span class="identity">{{ username }} - {{ role }}</span>
+      <a class="nav-link" href="{{ url_for('dashboard') }}">Dashboard</a>
+      <a class="nav-link" href="{{ url_for('machine') }}">Machine</a>
+      <a class="nav-link" href="{{ url_for('incidents_page') }}">Incidents</a>
+      {% if role == "administrator" %}
+        <a class="nav-link" href="{{ url_for('users_page') }}">Users</a>
+        <a class="nav-link" href="{{ url_for('audit_page') }}">Audit</a>
+        <a class="nav-link" href="{{ url_for('settings') }}">Settings</a>
+      {% endif %}
+      <a class="nav-link hmi-link" href="{{ hmi_url }}" rel="noopener noreferrer">Back to machine HMI</a>
+      <form method="post" action="{{ url_for('logout') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="link-button nav-link" type="submit">Log out</button>
+      </form>
+    </nav>
+  </header>
+  <main class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <p class="message {{ category }}">{{ message }}</p>
+      {% endfor %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
