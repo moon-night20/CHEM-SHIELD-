@@ -12,6 +12,7 @@ mitigation.
 - [Part 3: physical-process ML detector](./chem_shield_p3/README.md)
 - [Part 4: correlation and canonical risk engine](./chem_shield_p4/correlation/README.md)
 - [Part 5: OT monitoring entry point](./chem_shield_p5/ot_monitor/README.md)
+- Part 6: operator-confirmed simulated response
 
 The Part 1 HMI hosts the Part 4 incident summary and its SQLite persistence.
 P2 network replay and the P5 physical monitor can explicitly publish scored
@@ -96,6 +97,16 @@ Troubleshooting:
   PLC ID only for this configured single-asset demo.
 - **HMI not running:** the pipeline works without an HMI unless `--publish` is
   selected. Start the HMI on `127.0.0.1:15000` before publishing.
+
+## Part 6: operator-confirmed simulated response
+
+Part 6 is available in the operator HMI's existing risk-alert popup. For an
+active CRITICAL incident, the operator may explicitly confirm a simulated
+stop there; HIGH and lower incidents cannot invoke it. No stop is automatic.
+The endpoint requires a page-generated confirmation token and rejects requests
+unless both the caller and configured PLC address are loopback. The response
+is recorded in the local event log. This is for the virtual PLC lab only; it
+does not authorize production connections or safety-system use.
 
 ## HMI risk integration
 
@@ -182,6 +193,17 @@ authentication, set `CHEM_SHIELD_INGEST_TOKEN` for both the HMI and publisher
 processes. The console is simulation-only and loopback-only. Decisions,
 including a simulated response, are recorded in a local audit log and are
 never executed against equipment.
+
+The admin Dashboard and Machine page poll the loopback HMI's state, connection,
+risk, and telemetry APIs every three seconds using GET-only requests. They show
+the last update and an OFFLINE/STALE notice when live data is unavailable or
+older than ten seconds. The incident register uses HMI incidents when available
+and falls back to the most recent P4/P5 chain files when the HMI cannot be
+reached; incidents are associated across sources only by matching asset and
+overlapping time windows. An admin acknowledgement is the only machine-HMI
+write exposed here: it calls the HMI's existing incident acknowledgement route.
+All other supervisory decisions are local audit records. A simulated response
+does not invoke `chem_shield_p6/` or shut down the machine.
 
 The HMI's Admin link defaults to `http://127.0.0.1:5000`; set
 `CHEM_SHIELD_ADMIN_URL` to another `http://` or `https://` admin URL if needed.

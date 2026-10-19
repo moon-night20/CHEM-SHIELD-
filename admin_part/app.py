@@ -12,16 +12,21 @@ from datetime import datetime, timedelta, timezone
 from functools import wraps
 from pathlib import Path
 from typing import Any, Callable
-from urllib.error import URLError
-from urllib.parse import urlsplit
-from urllib.request import urlopen
+from urllib.error import HTTPError, URLError
+from urllib.request import Request
 
-from flask import Flask, abort, flash, redirect, render_template, request, session, url_for
+from flask import Flask, abort, flash, jsonify, redirect, render_template, request, session, url_for
 from flask_wtf.csrf import CSRFError, CSRFProtect
 from werkzeug.security import check_password_hash
 
 from admin_part.detection.login_detector import failed_login_alerts
 from admin_part.incident_data import load_chain_incidents
+from admin_part.machine_client import (
+    DEFAULT_HMI_URL,
+    MachineClient,
+    open_hmi_url,
+    validate_hmi_url,
+)
 from admin_part.storage import (
     add_audit,
     audit_detail,
@@ -36,7 +41,6 @@ from admin_part.manage_users import ROLES
 
 BASE_DIR = Path(__file__).resolve().parent
 REPO_ROOT = BASE_DIR.parent
-DEFAULT_HMI_URL = "http://127.0.0.1:15000"
 DEFAULT_ADMIN_HOST = "127.0.0.1"
 MAX_FAILURES = 5
 LOCKOUT_MINUTES = 5
@@ -55,24 +59,34 @@ LOGGER = logging.getLogger(__name__)
 
 
 def _safe_hmi_url(value: str | None) -> str:
-    if value:
-        try:
-            parsed = urlsplit(value.strip())
-            if (
-                parsed.scheme in {"http", "https"}
-                and parsed.netloc
-                and parsed.hostname
-                and not parsed.username
-                and not parsed.password
-                and not parsed.query
-                and not parsed.fragment
-            ):
-                return value.strip().rstrip("/")
-        except ValueError:
-            pass
-    if value:
-        LOGGER.warning("Invalid CHEM_SHIELD_HMI_URL; using %s", DEFAULT_HMI_URL)
-    return DEFAULT_HMI_URL
+    return validate_hmi_url(value)
+
+
+def _parse_timestamp(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed
+    except ValueError:
+        return None
+
+
+def _time_windows_overlap(first: dict[str, Any], second: dict[str, Any]) -> bool:
+    if first.get("asset_id") != second.get("asset_id"):
+        return False
+    first_start = _parse_timestamp(first.get("start_time"))
+    first_end = _parse_timestamp(first.get("end_time"))
+    second_start = _parse_timestamp(second.get("start_time"))
+    second_end = _parse_timestamp(second.get("end_time"))
+    return bool(
+        first_start
+        and first_end
+        and second_start
+        and second_end
+        and first_start <= second_end
+        and second_start <= first_end
+    )
 
 
 def server_options(environ: dict[str, str] | None = None) -> dict[str, Any]:
@@ -161,6 +175,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         P4_OUTPUT_FILE=REPO_ROOT / "out" / "p4_incidents.json",
         P5_OUTPUT_FILE=REPO_ROOT / "out" / "p5_report.json",
         HMI_URL=_safe_hmi_url(os.environ.get("CHEM_SHIELD_HMI_URL")),
+        MACHINE_CLIENT=None,
     )
     if test_config:
         app.config.update(test_config)
@@ -175,8 +190,12 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
     app.config["LOGIN_EVENTS_FILE"] = Path(app.config["LOGIN_EVENTS_FILE"])
     app.config["P4_OUTPUT_FILE"] = Path(app.config["P4_OUTPUT_FILE"])
     app.config["P5_OUTPUT_FILE"] = Path(app.config["P5_OUTPUT_FILE"])
+    app.config["HMI_URL"] = _safe_hmi_url(str(app.config["HMI_URL"]))
     initialize(app.config["ADMIN_DB_PATH"])
     CSRFProtect(app)
+    app.extensions["machine_client"] = (
+        app.config["MACHINE_CLIENT"] or MachineClient(app.config["HMI_URL"])
+    )
 
     @app.context_processor
     def shared_template_context():
@@ -232,25 +251,112 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
 
         return decorate
 
-    def current_incidents() -> tuple[list[dict[str, Any]], list[str], str | None]:
-        incidents, errors, updated = load_chain_incidents(
+    def current_incidents() -> tuple[list[dict[str, Any]], list[str], str | None, str]:
+        chain_incidents, errors, updated = load_chain_incidents(
             app.config["P4_OUTPUT_FILE"], app.config["P5_OUTPUT_FILE"]
         )
+        hmi_result = app.extensions["machine_client"].get("incidents")
+        if not hmi_result["ok"]:
+            incidents = chain_incidents
+            source_label = "from last chain run (HMI offline)"
+        else:
+            payload = hmi_result["data"]
+            hmi_incidents = payload.get("incidents") if isinstance(payload, dict) else payload
+            if not isinstance(hmi_incidents, list) or any(
+                not isinstance(item, dict) for item in hmi_incidents
+            ):
+                app.logger.warning("Machine HMI returned an invalid incident list; using chain output")
+                incidents = chain_incidents
+                source_label = "from last chain run (HMI offline)"
+            else:
+                incidents = []
+                source_label = "live from machine HMI"
+                for machine_incident in hmi_incidents:
+                    match = next(
+                        (
+                            item
+                            for item in chain_incidents
+                            if _time_windows_overlap(machine_incident, item)
+                        ),
+                        {},
+                    )
+                    events = machine_incident.get("events", [])
+                    if not isinstance(events, list):
+                        events = []
+                    counts = {
+                        "network": 0,
+                        "physical": 0,
+                    }
+                    for event in events:
+                        if not isinstance(event, dict):
+                            continue
+                        event_type = str(event.get("event_type", "")).lower()
+                        source = str(event.get("source", "")).lower()
+                        if event_type == "network" or "network" in source:
+                            counts["network"] += 1
+                        if event_type == "physical" or "physical" in source or "ot_monitor" in source:
+                            counts["physical"] += 1
+                    status = str(machine_incident.get("status", "ACTIVE")).lower()
+                    p5_report = match.get("p5", {})
+                    confirmation = p5_report.get("rule_confirmation")
+                    incidents.append({
+                        **machine_incident,
+                        "events": events,
+                        "event_counts": counts,
+                        "status_record": {
+                            "status": status,
+                            "updated_by": machine_incident.get("acknowledged_by", ""),
+                            "updated_at": machine_incident.get("acknowledged_at", ""),
+                            "note": "",
+                        },
+                        "p5": p5_report,
+                        "rule_confirmation": confirmation if isinstance(confirmation, bool) else None,
+                        "chain_events": match.get("events", []),
+                        "chain_incident_id": match.get("incident_id"),
+                    })
         statuses = get_statuses(app.config["ADMIN_DB_PATH"])
         for incident in incidents:
-            incident["status_record"] = statuses.get(
-                incident["incident_id"],
-                {
+            local_status = statuses.get(incident["incident_id"])
+            if local_status:
+                incident["status_record"] = local_status
+            else:
+                incident.setdefault("status_record", {
                     "status": "new",
                     "updated_by": "",
                     "updated_at": "",
                     "note": "",
-                },
-            )
+                })
+            incident.setdefault("chain_events", [])
             p5_report = incident.get("p5", {})
             confirmation = p5_report.get("rule_confirmation")
             incident["rule_confirmation"] = confirmation if isinstance(confirmation, bool) else None
-        return incidents, errors, updated
+            incident["source_label"] = source_label
+        if source_label == "live from machine HMI":
+            errors = []
+        return incidents, errors, updated, source_label
+
+    def post_hmi_acknowledgement(incident_id: str, username: str) -> tuple[bool, str | None]:
+        from urllib.parse import quote
+
+        endpoint = (
+            f"{app.config['HMI_URL']}/api/incidents/"
+            f"{quote(incident_id, safe='')}/acknowledge"
+        )
+        request_body = json.dumps({"acknowledged_by": username}).encode("utf-8")
+        hmi_request = Request(
+            endpoint,
+            data=request_body,
+            headers={"Content-Type": "application/json", "Accept": "application/json"},
+            method="POST",
+        )
+        try:
+            with open_hmi_url(hmi_request, timeout=2.0) as response:
+                if response.status < 200 or response.status >= 300:
+                    return False, f"Machine HMI returned HTTP {response.status}"
+                return True, None
+        except (HTTPError, URLError, OSError, TimeoutError, ValueError) as error:
+            app.logger.warning("HMI acknowledgement failed for %s: %s", incident_id, error)
+            return False, str(error)
 
     def record_auth_event(username: str, event_type: str, result: str) -> None:
         timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -379,7 +485,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
     @role_required(*ALL_ROLES)
     def dashboard():
         try:
-            incidents, errors, updated = current_incidents()
+            incidents, errors, updated, source_label = current_incidents()
             if session["role"] == "operator":
                 incidents = [
                     incident for incident in incidents
@@ -397,6 +503,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         except (OSError, sqlite3.Error, ValueError, TypeError) as error:
             app.logger.exception("Admin dashboard could not load its data")
             incidents, errors, updated, login_alerts = [], [str(error)], None, []
+            source_label = "unavailable"
             counts = {level: 0 for level in RISK_LEVELS}
         return render_template(
             "dashboard.html",
@@ -409,30 +516,19 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             role=session["role"],
             can_act=session["role"] in ANALYST_ROLES,
             hmi_url=app.config["HMI_URL"],
+            source_label=source_label,
         )
+
+    @app.get("/api/live")
+    @role_required(*ALL_ROLES)
+    def live_api():
+        return jsonify(app.extensions["machine_client"].live())
 
     @app.get("/machine")
     @role_required(*ALL_ROLES)
     def machine():
-        snapshot: dict[str, Any] = {"status": "OFFLINE"}
-        error_message = None
-        try:
-            with urlopen(f"{app.config['HMI_URL']}/api/state", timeout=1.5) as response:
-                body = json.loads(response.read().decode("utf-8"))
-            if isinstance(body, dict) and "error" not in body:
-                snapshot = {"status": "ONLINE", **body}
-            else:
-                error_message = (
-                    str(body.get("error", "Machine HMI returned invalid state"))
-                    if isinstance(body, dict)
-                    else "Machine HMI returned invalid state"
-                )
-        except (OSError, URLError, TimeoutError, ValueError, json.JSONDecodeError) as error:
-            error_message = str(error)
         return render_template(
             "machine.html",
-            snapshot=snapshot,
-            error_message=error_message,
             hmi_url=app.config["HMI_URL"],
             username=session["username"],
             role=session["role"],
@@ -442,7 +538,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
     @role_required(*ALL_ROLES)
     def incidents_page():
         try:
-            incidents, errors, updated = current_incidents()
+            incidents, errors, updated, source_label = current_incidents()
             if session["role"] == "operator":
                 incidents = [
                     incident for incident in incidents
@@ -450,7 +546,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
                 ]
         except (OSError, sqlite3.Error, ValueError, TypeError) as error:
             app.logger.exception("Incident list could not load")
-            incidents, errors, updated = [], [str(error)], None
+            incidents, errors, updated, source_label = [], [str(error)], None, "unavailable"
         return render_template(
             "incidents.html",
             incidents=incidents,
@@ -459,12 +555,13 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             username=session["username"],
             role=session["role"],
             hmi_url=app.config["HMI_URL"],
+            source_label=source_label,
         )
 
     @app.get("/incidents/<incident_id>")
     @role_required(*ALL_ROLES)
     def incident_detail(incident_id: str):
-        incidents, errors, updated = current_incidents()
+        incidents, errors, updated, _ = current_incidents()
         incident = next(
             (item for item in incidents if item["incident_id"] == incident_id), None
         )
@@ -472,6 +569,20 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             abort(404)
         if session["role"] == "operator" and incident["event_counts"]["physical"] == 0:
             abort(404)
+        telemetry_result = app.extensions["machine_client"].get("telemetry")
+        telemetry_rows = telemetry_result.get("data") if telemetry_result["ok"] else []
+        if not isinstance(telemetry_rows, list):
+            telemetry_rows = []
+        start_time = _parse_timestamp(incident.get("start_time"))
+        end_time = _parse_timestamp(incident.get("end_time"))
+        machine_context = [
+            row for row in telemetry_rows
+            if isinstance(row, dict)
+            and start_time is not None
+            and end_time is not None
+            and (timestamp := _parse_timestamp(row.get("timestamp"))) is not None
+            and start_time <= timestamp <= end_time
+        ]
         return render_template(
             "incident.html",
             incident=incident,
@@ -480,6 +591,8 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             username=session["username"],
             role=session["role"],
             can_act=session["role"] in ANALYST_ROLES,
+            machine_context=machine_context,
+            machine_context_online=telemetry_result["ok"],
         )
 
     @app.post("/incidents/<incident_id>/action")
@@ -497,11 +610,22 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
                 title="400 - Note required",
                 message="Please provide a note of at least 5 characters for this action.",
             ), 400
-        incidents, _, _ = current_incidents()
+        incidents, _, _, _ = current_incidents()
         if not any(incident["incident_id"] == incident_id for incident in incidents):
             abort(404)
 
         status = ALLOWED_ACTIONS[action]
+        hmi_ack_error = None
+        if action == "acknowledge":
+            acknowledged, hmi_ack_error = post_hmi_acknowledgement(
+                incident_id, session["username"]
+            )
+            if not acknowledged:
+                flash(
+                    "Machine HMI is offline or could not record the acknowledgement; "
+                    "the decision was recorded in the local admin log.",
+                    "warning",
+                )
         detail = audit_detail(action=action, note=note)
         record_incident_action(
             app.config["ADMIN_DB_PATH"],
@@ -517,7 +641,9 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         flash(
             "Simulation only - recorded, nothing is executed."
             if action == "simulated_response"
-            else f"Incident marked {status.replace('_', ' ')}.",
+            else f"Incident marked {status.replace('_', ' ')}."
+            if not hmi_ack_error
+            else "Local decision recorded; machine acknowledgement remains pending.",
             "success",
         )
         return redirect(url_for("incident_detail", incident_id=incident_id))

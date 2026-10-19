@@ -2,8 +2,10 @@
 
 import argparse
 import hmac
+import ipaddress
 import logging
 import os
+import secrets
 import sqlite3
 from datetime import datetime, timezone, timedelta
 from urllib.parse import urlsplit
@@ -14,6 +16,7 @@ from chem_shield_p1.data.store import TelemetryStore
 from chem_shield_p1.events.abnormal_events import write_event
 from chem_shield_p4.correlation.incident_store import IncidentStore
 from chem_shield_p4.correlation.risk_pipeline import RiskPipeline
+from chem_shield_p6.response import response_decision
 
 DEFAULT_ADMIN_URL = "http://127.0.0.1:5000"
 
@@ -47,6 +50,7 @@ def create_app(
 ):
     app = Flask(__name__)
     app.config["INGEST_TOKEN"] = os.environ.get("CHEM_SHIELD_INGEST_TOKEN")
+    app.config["P6_CONFIRM_TOKEN"] = secrets.token_urlsafe(32)
     store = TelemetryStore(database)
     incident_store = IncidentStore(database)
     risk_pipeline = RiskPipeline(
@@ -76,7 +80,11 @@ def create_app(
 
     @app.get("/")
     def index():
-        return render_template("index.html", admin_url=_admin_url())
+        return render_template(
+            "index.html",
+            admin_url=_admin_url(),
+            p6_confirm_token=app.config["P6_CONFIRM_TOKEN"],
+        )
 
     @app.get("/api/state")
     def state():
@@ -208,6 +216,83 @@ def create_app(
         except sqlite3.Error as error:
             app.logger.exception("Incident acknowledgement failed")
             return jsonify({"error": str(error)}), 503
+
+    @app.post("/api/p6/respond")
+    def p6_respond():
+        nonlocal paused
+        if not request.is_json:
+            return jsonify({"error": "A JSON confirmation is required."}), 415
+        supplied_token = request.headers.get("X-Chem-Shield-P6-Confirmation", "")
+        if not hmac.compare_digest(supplied_token, app.config["P6_CONFIRM_TOKEN"]):
+            return jsonify({"error": "Part 6 confirmation token is missing or invalid."}), 403
+        payload = request.get_json(silent=True) or {}
+        incident_id = payload.get("incident_id")
+        if not isinstance(incident_id, str) or not incident_id.strip():
+            return jsonify({"error": "incident_id must be a non-empty string."}), 400
+        if payload.get("confirm_stop") is not True:
+            return jsonify({"error": "Explicit operator confirmation is required."}), 400
+
+        try:
+            caller_ip = ipaddress.ip_address(request.remote_addr or "")
+            plc_ip = ipaddress.ip_address(device.host)
+        except ValueError:
+            return jsonify({"error": "Part 6 is limited to loopback simulation only."}), 403
+        if not caller_ip.is_loopback or not plc_ip.is_loopback:
+            app.logger.warning(
+                "Rejected Part 6 response from %s targeting PLC host %s",
+                request.remote_addr,
+                device.host,
+            )
+            return jsonify({"error": "Part 6 is limited to loopback simulation only."}), 403
+
+        try:
+            incident = incident_store.get_incident(incident_id.strip())
+            if incident is None:
+                return jsonify({"error": "Incident not found."}), 404
+            decision = response_decision(incident)
+            if not decision["requires_operator_confirmation"]:
+                return jsonify({
+                    "error": "A simulated stop is available only for active CRITICAL incidents.",
+                    "decision": decision,
+                }), 409
+
+            current = plc_call(read_state)
+            registers_result = plc_call(
+                lambda client: client.write_registers(
+                    0, [0, current["target_rpm"]], slave=1
+                )
+            )
+            if registers_result.isError():
+                raise RuntimeError(f"Simulator rejected the Part 6 stop: {registers_result}")
+            event_result = plc_call(lambda client: client.write_register(6, 0, slave=1))
+            if event_result.isError():
+                raise RuntimeError(f"Simulator rejected the Part 6 reset: {event_result}")
+            paused = False
+            store.add_event({
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "source": "P6",
+                "machine_id": "M-01",
+                "event_type": "P6_SIMULATED_STOP",
+                "parameter": f"motor_status ({incident_id.strip()})",
+                "old_value": current["motor_status"],
+                "new_value": "STOPPED",
+                "severity": "critical",
+            })
+        except (ConnectionError, RuntimeError, ValueError) as error:
+            app.logger.warning("Part 6 simulated stop failed: %s", error)
+            return jsonify({"error": str(error)}), 503
+        except sqlite3.Error as error:
+            app.logger.exception("Part 6 response could not be recorded")
+            return jsonify({"error": f"Part 6 response could not be recorded: {error}"}), 503
+
+        return jsonify({
+            "ok": True,
+            "incident_id": incident_id.strip(),
+            "action": "simulated_stop",
+            "motor_status": "STOPPED",
+            "simulation_only": True,
+            "executed": True,
+        })
 
     @app.post("/api/control")
     def control():

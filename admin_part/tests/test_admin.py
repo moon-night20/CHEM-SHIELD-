@@ -8,6 +8,7 @@ import urllib.request
 from pathlib import Path
 from unittest.mock import patch
 from urllib.error import URLError
+from unittest.mock import MagicMock
 
 import pytest
 from werkzeug.security import generate_password_hash
@@ -49,6 +50,30 @@ P5_SAMPLE = [{
 }]
 
 
+class FakeMachineClient:
+    def __init__(self):
+        self.responses = {
+            "state": {"ok": False, "data": None, "error": "offline", "fetched_at": "2026-10-18T00:00:00Z"},
+            "connection": {"ok": False, "data": None, "error": "offline", "fetched_at": "2026-10-18T00:00:00Z"},
+            "risk": {"ok": False, "data": None, "error": "offline", "fetched_at": "2026-10-18T00:00:00Z"},
+            "telemetry": {"ok": False, "data": None, "error": "offline", "fetched_at": "2026-10-18T00:00:00Z"},
+            "incidents": {"ok": False, "data": None, "error": "offline", "fetched_at": "2026-10-18T00:00:00Z"},
+        }
+
+    def get(self, name):
+        return self.responses[name]
+
+    def live(self):
+        return {
+            "ok": all(self.responses[name]["ok"] for name in ("state", "connection", "risk", "telemetry")),
+            "state": self.responses["state"],
+            "connection": self.responses["connection"],
+            "risk": self.responses["risk"],
+            "telemetry": self.responses["telemetry"],
+            "fetched_at": self.responses["telemetry"]["fetched_at"],
+        }
+
+
 @pytest.fixture
 def setup_console(tmp_path: Path):
     data_dir = tmp_path / "data"
@@ -72,7 +97,8 @@ def setup_console(tmp_path: Path):
         "LOGIN_EVENTS_FILE": data_dir / "events" / "login_events.jsonl",
         "P4_OUTPUT_FILE": p4_path,
         "P5_OUTPUT_FILE": p5_path,
-        "HMI_URL": "https://machine.example.test:15000",
+        "HMI_URL": "http://127.0.0.1:15000",
+        "MACHINE_CLIENT": FakeMachineClient(),
     })
     return app, app.test_client(), data_dir, p4_path, p5_path
 
@@ -228,12 +254,10 @@ def test_role_navigation_and_machine_offline_status(setup_console):
     assert b"Audit" not in dashboard.data
     assert b"Users" not in dashboard.data
     assert b"Back to machine HMI" in dashboard.data
-    assert b'href="https://machine.example.test:15000"' in dashboard.data
-    with patch("admin_part.app.urlopen", side_effect=URLError("connection refused")):
-        machine = client.get("/machine")
+    assert b'href="http://127.0.0.1:15000"' in dashboard.data
+    machine = client.get("/machine")
     assert machine.status_code == 200
     assert b"OFFLINE" in machine.data
-    assert b"Machine HMI unavailable" in machine.data
     assert b"START" not in machine.data
 
 
@@ -264,10 +288,16 @@ def test_remote_bind_requires_opt_in_and_explicit_secret():
 
 
 def test_hmi_url_validation_allows_http_s_but_rejects_embedded_secrets():
-    assert _safe_hmi_url("https://machine.example.test:15000") == (
-        "https://machine.example.test:15000"
+    assert _safe_hmi_url("https://localhost:15000") == (
+        "https://localhost:15000"
     )
     assert _safe_hmi_url("https://machine.example.test/?token=secret") == (
+        "http://127.0.0.1:15000"
+    )
+
+
+def test_hmi_url_validation_rejects_non_loopback_hosts():
+    assert _safe_hmi_url("http://machine.example.test:15000") == (
         "http://127.0.0.1:15000"
     )
 
@@ -334,6 +364,14 @@ def test_dashboard_merges_chain_outputs_and_handles_missing_or_malformed(setup_c
     assert b"must be a JSON list" in malformed.data
 
 
+def test_dashboard_uses_chain_fallback_when_machine_hmi_is_offline(setup_console):
+    _, client, *_ = setup_console
+    login(client, "analyst", "Analyst-password-123")
+    response = client.get("/dashboard")
+    assert b"from last chain run (HMI offline)" in response.data
+    assert b"INC-0001" in response.data
+
+
 def test_dashboard_shows_login_failure_alerts_grouped_by_user_and_ip(setup_console):
     _, client, data_dir, *_ = setup_console
     login(client, "analyst", "Analyst-password-123")
@@ -363,6 +401,127 @@ def test_incident_detail_escapes_event_html(setup_console):
     assert response.status_code == 200
     assert b"&lt;script&gt;alert(1)&lt;/script&gt;" in response.data
     assert b"<script>alert(1)</script>" not in response.data
+
+
+def test_incident_detail_includes_only_telemetry_inside_incident_window(setup_console):
+    app, client, *_ = setup_console
+    login(client, "analyst", "Analyst-password-123")
+    machine = app.extensions["machine_client"]
+    machine.responses["telemetry"] = {
+        "ok": True,
+        "data": [
+            {"timestamp": "2026-10-14T10:00:15Z", "motor_status": "RUNNING", "rpm": 1500, "temperature": 88, "pressure": 4, "power": 9},
+            {"timestamp": "2026-10-14T10:00:21Z", "motor_status": "RUNNING", "rpm": 1600, "temperature": 90, "pressure": 4, "power": 9},
+        ],
+        "error": None,
+        "fetched_at": "2026-10-18T00:00:00Z",
+    }
+    response = client.get(f"/incidents/{INCIDENT_ID}")
+    assert response.status_code == 200
+    assert b"2026-10-14T10:00:15Z" in response.data
+    assert b"2026-10-14T10:00:21Z" not in response.data
+
+
+def test_live_incidents_match_chain_by_asset_and_overlapping_window(setup_console):
+    app, client, *_ = setup_console
+    login(client, "analyst", "Analyst-password-123")
+    app.extensions["machine_client"].responses["incidents"] = {
+        "ok": True,
+        "data": {"incidents": [{
+            "incident_id": "HMI-DIFFERENT-ID",
+            "asset_id": "PLC-01",
+            "start_time": "2026-10-14T10:00:15Z",
+            "end_time": "2026-10-14T10:00:19Z",
+            "status": "ACTIVE",
+            "risk_level": "CRITICAL",
+            "risk_score": 0.804,
+            "events": [{"event_type": "physical", "source": "physical_ml"}],
+        }]},
+        "error": None,
+        "fetched_at": "2026-10-18T00:00:00Z",
+    }
+    response = client.get("/incidents")
+    assert response.status_code == 200
+    assert b"live from machine HMI" in response.data
+    assert b"HMI-DIFFERENT-ID" in response.data
+
+
+def test_admin_acknowledgement_posts_once_to_machine_hmi_and_records_locally(setup_console):
+    _, client, data_dir, *_ = setup_console
+    login(client, "analyst", "Analyst-password-123")
+    response_object = MagicMock()
+    response_object.status = 200
+    response_object.__enter__ = MagicMock(return_value=response_object)
+    response_object.__exit__ = MagicMock(return_value=False)
+    with patch("admin_part.app.open_hmi_url", return_value=response_object) as post:
+        response = post_action(client, "acknowledge", token=csrf_token(client))
+    assert response.status_code == 200
+    assert post.call_count == 1
+    request = post.call_args.args[0]
+    assert request.method == "POST"
+    assert request.full_url.endswith(f"/api/incidents/{INCIDENT_ID}/acknowledge")
+    assert json.loads(request.data) == {"acknowledged_by": "analyst"}
+    import sqlite3
+
+    with sqlite3.connect(data_dir / "admin.db") as connection:
+        status = connection.execute(
+            "SELECT status FROM incident_status WHERE incident_id = ?",
+            (INCIDENT_ID,),
+        ).fetchone()[0]
+    assert status == "acknowledged"
+
+
+def test_admin_acknowledgement_failure_warns_but_keeps_local_decision(setup_console):
+    _, client, data_dir, *_ = setup_console
+    login(client, "analyst", "Analyst-password-123")
+    with patch("admin_part.app.open_hmi_url", side_effect=URLError("HMI offline")) as post:
+        response = post_action(client, "acknowledge", token=csrf_token(client))
+    assert response.status_code == 200
+    assert post.call_count == 1
+    assert b"could not record the acknowledgement" in response.data
+    import sqlite3
+
+    with sqlite3.connect(data_dir / "admin.db") as connection:
+        status = connection.execute(
+            "SELECT status FROM incident_status WHERE incident_id = ?",
+            (INCIDENT_ID,),
+        ).fetchone()[0]
+    assert status == "acknowledged"
+
+
+def test_live_api_returns_machine_data_and_safe_offline_result(setup_console):
+    app, client, *_ = setup_console
+    login(client, "analyst", "Analyst-password-123")
+    live_result = app.extensions["machine_client"]
+    online = {
+        "ok": True,
+        "data": {"rpm": 1500},
+        "error": None,
+        "fetched_at": "2026-10-18T00:00:00Z",
+    }
+    live_result.responses.update({
+        "state": online,
+        "connection": online,
+        "risk": {"ok": True, "data": {"risk_level": "HIGH"}, "error": None, "fetched_at": online["fetched_at"]},
+        "telemetry": {"ok": True, "data": [{"rpm": 1500}], "error": None, "fetched_at": online["fetched_at"]},
+    })
+    online_response = client.get("/api/live")
+    assert online_response.status_code == 200
+    online_data = online_response.get_json()
+    assert online_data["ok"] is True
+    assert online_data["state"]["data"]["rpm"] == 1500
+    assert online_data["risk"]["data"]["risk_level"] == "HIGH"
+
+    live_result.responses["state"] = {
+        "ok": False, "data": None, "error": "connection refused",
+        "fetched_at": online["fetched_at"],
+    }
+    offline_response = client.get("/api/live")
+    assert offline_response.status_code == 200
+    offline_data = offline_response.get_json()
+    assert offline_data["ok"] is False
+    assert offline_data["state"]["data"] is None
+    assert offline_data["state"]["error"] == "connection refused"
 
 
 def test_incident_action_updates_status_and_audit(setup_console):

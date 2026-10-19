@@ -7,6 +7,9 @@ let selectedFocus = 'temperature';
 let allIncidents = [];
 let alertIncidentId = null;
 let lastNotifiedIncident = null;
+let refreshPending = false;
+let riskRefreshPending = false;
+const p6ConfirmToken = document.querySelector('meta[name="p6-confirm-token"]').content;
 
 const focusConfig = {
   temperature: {label: 'TEMPERATURE', unit: '°C', value: (state) => state.temperature, target: () => '80.0 °C'},
@@ -100,10 +103,16 @@ function renderEvents(events) {
 }
 
 async function getJson(url, options) {
-  const response = await fetch(url, options);
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || `Request failed: ${response.status}`);
-  return data;
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 5000);
+  try {
+    const response = await fetch(url, {...options, signal: controller.signal});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || `Request failed: ${response.status}`);
+    return data;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 }
 
 function appendText(parent, tag, className, text) {
@@ -178,10 +187,19 @@ function maybeShowRiskAlert(summary) {
   alertIncidentId = incident.incident_id;
   $('risk-alert-title').textContent = `${incident.risk_level} RISK INCIDENT`;
   $('risk-alert-message').textContent = `${incident.asset_id}: score ${Number(incident.risk_score).toFixed(3)} on a 0.0-1.0 scale. Acknowledging records operator awareness only; it does not lower risk or resolve the incident.`;
+  const stopButton = $('risk-alert-sim-stop');
+  stopButton.hidden = incident.risk_level !== 'CRITICAL';
+  stopButton.disabled = false;
+  stopButton.textContent = 'CONFIRM SIMULATED STOP';
+  $('risk-alert-p6-message').textContent = incident.risk_level === 'CRITICAL'
+    ? 'Part 6 is simulation only. Nothing stops unless you explicitly confirm here; it is available only while the HMI and simulator use loopback.'
+    : 'Part 6 offers a simulated stop only for an active CRITICAL incident.';
   $('risk-alert-dialog').showModal();
 }
 
 async function refreshRisk() {
+  if (riskRefreshPending) return;
+  riskRefreshPending = true;
   try {
     const summary = await getJson('/api/risk');
     const level = summary.risk_level.toLowerCase();
@@ -200,10 +218,14 @@ async function refreshRisk() {
     $('risk-score').textContent = '--';
     $('risk-input-status').textContent = 'ERROR';
     $('risk-last-update').textContent = error.message;
+  } finally {
+    riskRefreshPending = false;
   }
 }
 
 async function refresh() {
+  if (refreshPending) return;
+  refreshPending = true;
   void refreshRisk();
   try {
     const [state, events, connection] = await Promise.all([getJson('/api/state'), getJson('/api/events'), getJson('/api/connection')]);
@@ -212,6 +234,8 @@ async function refresh() {
     $('last-update').textContent = `UPDATED ${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'})}`;
   } catch (error) {
     setConnection(false); setNetworkStatus({status: 'CONNECTION ERROR', error: error.message}); console.warn(error);
+  } finally {
+    refreshPending = false;
   }
 }
 
@@ -228,6 +252,30 @@ async function acknowledgeIncident(incidentId) {
     await refreshRisk();
   } catch (error) {
     $('risk-alert-message').textContent = `Acknowledgement failed: ${error.message}`;
+  }
+}
+
+async function confirmSimulatedStop() {
+  const button = $('risk-alert-sim-stop');
+  if (!alertIncidentId || button.disabled) return;
+  button.disabled = true;
+  try {
+    const result = await getJson('/api/p6/respond', {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'X-Chem-Shield-P6-Confirmation':p6ConfirmToken,
+      },
+      body:JSON.stringify({incident_id:alertIncidentId, confirm_stop:true}),
+    });
+    $('risk-alert-message').textContent = result.simulation_only
+      ? 'Simulation only: the local virtual machine recorded the stop. No physical device was contacted.'
+      : 'Part 6 response recorded.';
+    button.textContent = 'SIMULATED STOP RECORDED';
+    await refresh();
+  } catch (error) {
+    $('risk-alert-message').textContent = `Simulated stop was not confirmed: ${error.message}`;
+    button.disabled = false;
   }
 }
 
@@ -286,6 +334,7 @@ $('incident-list').addEventListener('click', (event) => {
 $('risk-alert-ack').addEventListener('click', () => {
   if (alertIncidentId) void acknowledgeIncident(alertIncidentId);
 });
+$('risk-alert-sim-stop').addEventListener('click', () => void confirmSimulatedStop());
 $('risk-alert-close').addEventListener('click', () => $('risk-alert-dialog').close());
 
 setConnection(false); setNetworkStatus({status:'DISCONNECTED', error:'Not connected'}); refresh(); setInterval(refresh, 1000);

@@ -3,7 +3,10 @@
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
+from chem_shield_p1.communication.device_connection import DeviceConnection
 from chem_shield_p1.hmi.app import create_app
 
 
@@ -82,6 +85,162 @@ class RiskRouteTests(unittest.TestCase):
         response = self.client.get("/api/state")
         self.assertEqual(response.status_code, 503)
         self.assertIn("error", response.get_json())
+
+    def _post_critical_incident(self):
+        response = self.client.post(
+            "/api/risk/events",
+            json={"events": [
+                {
+                    "event_id": "p6-network",
+                    "timestamp": "2026-10-14T09:30:00Z",
+                    "source": "network_model",
+                    "asset_id": "PLC-01",
+                    "event_type": "network",
+                    "severity": "high",
+                    "evidence": {},
+                    "anomaly_score": 1.0,
+                },
+                {
+                    "event_id": "p6-physical",
+                    "timestamp": "2026-10-14T09:30:01Z",
+                    "source": "physical_ml",
+                    "asset_id": "PLC-01",
+                    "event_type": "physical",
+                    "severity": "high",
+                    "evidence": {},
+                    "anomaly_score": 1.0,
+                },
+            ]},
+        )
+        self.assertEqual(response.status_code, 200)
+        incident = response.get_json()["incidents"][0]
+        self.assertEqual(incident["risk_level"], "CRITICAL")
+        return incident["incident_id"]
+
+    def test_p6_requires_page_token_operator_confirmation_and_critical_risk(self):
+        token = self.app.config["P6_CONFIRM_TOKEN"]
+        self.assertEqual(
+            self.client.post(
+                "/api/p6/respond",
+                json={"incident_id": "missing", "confirm_stop": True},
+            ).status_code,
+            403,
+        )
+        self.assertEqual(
+            self.client.post(
+                "/api/p6/respond",
+                json={"incident_id": "missing", "confirm_stop": True},
+                headers={"X-Chem-Shield-P6-Confirmation": token},
+            ).status_code,
+            404,
+        )
+        incident_id = self._post_critical_incident()
+        response = self.client.post(
+            "/api/p6/respond",
+            json={"incident_id": incident_id, "confirm_stop": False},
+            headers={"X-Chem-Shield-P6-Confirmation": token},
+        )
+        self.assertEqual(response.status_code, 400)
+
+        low_response = self.client.post(
+            "/api/risk/events",
+            json={
+                "event_id": "p6-low-risk",
+                "timestamp": "2026-10-14T09:40:00Z",
+                "source": "network_model",
+                "asset_id": "PLC-02",
+                "event_type": "network",
+                "severity": "low",
+                "evidence": {},
+                "anomaly_score": 0.1,
+            },
+        )
+        self.assertEqual(low_response.status_code, 200)
+        low_id = low_response.get_json()["incidents"][0]["incident_id"]
+        response = self.client.post(
+            "/api/p6/respond",
+            json={"incident_id": low_id, "confirm_stop": True},
+            headers={"X-Chem-Shield-P6-Confirmation": token},
+        )
+        self.assertEqual(response.status_code, 409)
+
+    def test_p6_executes_only_after_explicit_loopback_confirmation(self):
+        incident_id = self._post_critical_incident()
+        token = self.app.config["P6_CONFIRM_TOKEN"]
+        writes = []
+
+        class FakeClient:
+            def read_holding_registers(self, address, count, slave):
+                return SimpleNamespace(
+                    isError=lambda: False,
+                    registers=[1, 1500, 100, 6200, 400, 1200, 0, 0],
+                )
+
+            def write_registers(self, address, values, slave):
+                writes.append(("registers", address, values, slave))
+                return SimpleNamespace(isError=lambda: False)
+
+            def write_register(self, address, value, slave):
+                writes.append(("register", address, value, slave))
+                return SimpleNamespace(isError=lambda: False)
+
+        fake_client = FakeClient()
+        with patch.object(
+            DeviceConnection,
+            "call",
+            autospec=True,
+            side_effect=lambda _device, action: action(fake_client),
+        ) as plc_call:
+            response = self.client.post(
+                "/api/p6/respond",
+                json={"incident_id": incident_id, "confirm_stop": True},
+                headers={"X-Chem-Shield-P6-Confirmation": token},
+            )
+
+        self.assertEqual(response.status_code, 200, response.get_json())
+        self.assertEqual(response.get_json()["motor_status"], "STOPPED")
+        self.assertTrue(response.get_json()["simulation_only"])
+        self.assertEqual(plc_call.call_count, 3)
+        self.assertEqual(writes, [
+            ("registers", 0, [0, 1500], 1),
+            ("register", 6, 0, 1),
+        ])
+        events = self.client.get("/api/events").get_json()
+        self.assertEqual(events[0]["event_type"], "P6_SIMULATED_STOP")
+
+    def test_p6_refuses_non_loopback_machine_target(self):
+        with patch.object(DeviceConnection, "connect", side_effect=ConnectionError):
+            app = create_app(
+                plc_host="192.0.2.10",
+                plc_port=5020,
+                database=str(Path(self.temp_dir.name) / "remote.db"),
+            )
+        app.config.update(TESTING=True)
+        response = app.test_client().post(
+            "/api/p6/respond",
+            json={"incident_id": "INC-1", "confirm_stop": True},
+            headers={
+                "X-Chem-Shield-P6-Confirmation": app.config["P6_CONFIRM_TOKEN"]
+            },
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_p6_refuses_non_loopback_caller(self):
+        incident_id = self._post_critical_incident()
+        response = self.client.post(
+            "/api/p6/respond",
+            json={"incident_id": incident_id, "confirm_stop": True},
+            headers={
+                "X-Chem-Shield-P6-Confirmation": self.app.config["P6_CONFIRM_TOKEN"]
+            },
+            environ_base={"REMOTE_ADDR": "192.0.2.5"},
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_p6_does_not_execute_without_request(self):
+        with patch.object(DeviceConnection, "call", autospec=True) as plc_call:
+            self._post_critical_incident()
+        plc_call.assert_not_called()
 
 
 if __name__ == "__main__":

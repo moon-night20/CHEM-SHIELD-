@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="p6-confirm-token" content="{{ p6_confirm_token }}">
   <title>CHEM-SHIELD Virtual Machine | Operator Console</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
@@ -59,7 +60,8 @@
     <p class="eyebrow">OPERATOR ATTENTION REQUIRED</p>
     <h2 id="risk-alert-title">HIGH RISK INCIDENT</h2>
     <p id="risk-alert-message"></p>
-    <div class="risk-alert-actions"><button id="risk-alert-ack">ACKNOWLEDGE</button><button id="risk-alert-close">CLOSE</button></div>
+    <p id="risk-alert-p6-message" class="p6-response-note"></p>
+    <div class="risk-alert-actions"><button id="risk-alert-sim-stop" hidden>CONFIRM SIMULATED STOP</button><button id="risk-alert-ack">ACKNOWLEDGE</button><button id="risk-alert-close">CLOSE</button></div>
   </dialog>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>

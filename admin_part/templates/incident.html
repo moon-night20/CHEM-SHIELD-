@@ -19,11 +19,36 @@
   </section>
 
   <section class="panel">
+    <h2>Machine context</h2>
+    {% if machine_context_online %}
+      <p class="source-label">Telemetry recorded within this incident's time window.</p>
+      {% if machine_context %}
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Time</th><th>Motor</th><th>RPM</th><th>Temperature</th><th>Pressure</th><th>Power</th></tr></thead>
+            <tbody>{% for row in machine_context %}
+              <tr>
+                <td>{{ row.timestamp }}</td><td>{{ row.motor_status }}</td><td>{{ row.rpm }}</td>
+                <td>{{ row.temperature }}</td><td>{{ row.pressure }}</td><td>{{ row.power }}</td>
+              </tr>
+            {% endfor %}</tbody>
+          </table>
+        </div>
+      {% else %}<p class="empty-state">No telemetry rows fall inside the incident time window.</p>{% endif %}
+    {% else %}
+      <p class="empty-state">Machine telemetry is unavailable; chain event data remains available below.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel">
     <h2>Contributing network events</h2>
     {% set network_events = incident.events|selectattr("event_type", "equalto", "network")|list %}
     {% if network_events %}
       {% for event in network_events %}<pre class="event-data">{{ event }}</pre>{% endfor %}
     {% else %}<p class="empty-state">No network events.</p>{% endif %}
+    {% for event in incident.chain_events|selectattr("event_type", "equalto", "network") %}
+      <pre class="event-data">{{ event }}</pre>
+    {% endfor %}
   </section>
 
   <section class="panel">
@@ -32,6 +57,9 @@
     {% if physical_events %}
       {% for event in physical_events %}<pre class="event-data">{{ event }}</pre>{% endfor %}
     {% else %}<p class="empty-state">No physical events.</p>{% endif %}
+    {% for event in incident.chain_events|selectattr("event_type", "equalto", "physical") %}
+      <pre class="event-data">{{ event }}</pre>
+    {% endfor %}
   </section>
 
   <section class="panel">

@@ -6,26 +6,9 @@
       <h1>Machine status</h1>
       <p>Read-only view from the machine HMI. Machine controls remain on the operator HMI.</p>
     </div>
-    <span class="machine-state {{ snapshot.status|lower }}">{{ snapshot.status }}</span>
+    <span class="safety-label">Read-only · machine controls are not available here</span>
   </section>
-  {% if error_message %}
-    <section class="panel warning-panel" role="status">
-      <h2>Machine HMI unavailable</h2>
-      <p>{{ error_message }}</p>
-      <p>The supervisor console remains available and continues to use the P4/P5 chain output.</p>
-    </section>
-  {% endif %}
-  <section class="panel">
-    <h2>Live process panel</h2>
-    <p>HMI: <a href="{{ hmi_url }}" rel="noopener noreferrer">{{ hmi_url }}</a></p>
-    {% if snapshot.status == "ONLINE" %}
-      <dl class="machine-readings">
-        {% for key, value in snapshot.items() if key != "status" %}
-          <div><dt>{{ key|replace("_", " ")|title }}</dt><dd>{{ value }}</dd></div>
-        {% endfor %}
-      </dl>
-    {% else %}
-      <p class="empty-state">OFFLINE - live machine data is unavailable. No machine operation is available from this console.</p>
-    {% endif %}
-  </section>
+  <p class="hmi-address">Machine HMI: <a href="{{ hmi_url }}" rel="noopener noreferrer">{{ hmi_url }}</a></p>
+  {% include "_live_panel.html" %}
+  <p class="empty-state">The supervisor console only reads machine status and telemetry. Operate the virtual machine from the separate HMI page.</p>
 {% endblock %}

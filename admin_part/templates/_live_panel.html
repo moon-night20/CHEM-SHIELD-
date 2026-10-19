@@ -1,0 +1,39 @@
+<section class="panel live-panel" data-live-panel aria-label="Live machine context">
+  <div class="live-panel-heading">
+    <div>
+      <p class="eyebrow">READ-ONLY MACHINE FEED</p>
+      <h2>Live machine status</h2>
+    </div>
+    <div class="live-meta">
+      <span class="live-state offline" data-live-state>OFFLINE</span>
+      <span>Updated <time data-live-updated>Not yet received</time></span>
+    </div>
+  </div>
+  <p class="live-banner offline" data-live-banner role="status">OFFLINE - waiting for machine HMI data.</p>
+  <div class="live-readings">
+    <div><span>Motor</span><strong data-reading="motor_status">--</strong></div>
+    <div><span>Risk</span><strong data-reading="risk_level">--</strong></div>
+    <div><span>RPM</span><strong data-reading="rpm">--</strong></div>
+    <div><span>Temperature</span><strong data-reading="temperature">--</strong></div>
+    <div><span>Pressure</span><strong data-reading="pressure">--</strong></div>
+    <div><span>Power</span><strong data-reading="power">--</strong></div>
+  </div>
+  <div class="trend-wrap">
+    <div class="trend-title">
+      <strong>Recent process trend</strong>
+      <span>Latest telemetry · independently scaled</span>
+    </div>
+    <svg class="live-trend" viewBox="0 0 600 180" role="img" aria-label="Recent RPM, temperature, pressure, and power trend">
+      <path class="trend-grid" d="M40 20H590 M40 60H590 M40 100H590 M40 140H590 M40 20V140 M177 20V140 M315 20V140 M452 20V140 M590 20V140"/>
+      <polyline data-trend="rpm" points="" />
+      <polyline data-trend="temperature" points="" />
+      <polyline data-trend="pressure" points="" />
+      <polyline data-trend="power" points="" />
+      <text x="40" y="164">OLDER</text><text x="552" y="164">LATEST</text>
+    </svg>
+    <div class="trend-legend">
+      <span class="rpm-key">RPM</span><span class="temperature-key">Temperature</span>
+      <span class="pressure-key">Pressure</span><span class="power-key">Power</span>
+    </div>
+  </div>
+</section>

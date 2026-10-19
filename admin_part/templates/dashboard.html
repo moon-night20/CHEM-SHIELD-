@@ -20,6 +20,7 @@
     </div>
     <a href="{{ url_for('incidents_page') }}">Open incident register</a>
   </section>
+  {% include "_live_panel.html" %}
 
   {% if errors %}
     <section class="panel warning-panel" role="status">
@@ -38,7 +39,10 @@
   </section>
 
   <section class="panel">
-    <h2>Incidents</h2>
+  <div class="panel-heading">
+    <div><h2>Incidents</h2><p class="source-label">{{ source_label }}</p></div>
+    <a href="{{ url_for('incidents_page') }}">Open incident register</a>
+  </div>
     {% if incidents %}
       <div class="table-wrap">
         <table>
