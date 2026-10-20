@@ -5,6 +5,9 @@ Part 1. It is a passive, simulation-first analysis layer for network telemetry
 and Modbus-style traffic using sanitized fixtures. Publishing is an explicit
 opt-in and is limited to the Part 1 loopback HMI.
 
+P2 processes fixture or replayed Zeek, Suricata, and Modbus-monitor data only.
+It does **not** perform live packet capture.
+
 ## Scope and constraints
 
 - No live PLC writes or live OT connections.

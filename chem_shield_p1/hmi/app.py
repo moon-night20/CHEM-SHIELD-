@@ -78,7 +78,13 @@ def create_app(
     risk_criticality_by_asset=None,
 ):
     app = Flask(__name__)
-    app.config["INGEST_TOKEN"] = os.environ.get("CHEM_SHIELD_INGEST_TOKEN")
+    ingest_token = os.environ.get("CHEM_SHIELD_INGEST_TOKEN")
+    if not ingest_token:
+        ingest_token = secrets.token_urlsafe(32)
+        app.logger.warning(
+            "CHEM_SHIELD_INGEST_TOKEN is unset; generated a per-process ingest token."
+        )
+    app.config["INGEST_TOKEN"] = ingest_token
     app.config["P6_CONFIRM_TOKEN"] = secrets.token_urlsafe(32)
     app.config["OT_LIMITS_FILE"] = DEFAULT_OT_CONFIG
     ot_config = json.loads(
@@ -162,7 +168,7 @@ def create_app(
     @app.post("/api/risk/events")
     def risk_event_ingest():
         ingest_token = app.config["INGEST_TOKEN"]
-        if ingest_token and not hmac.compare_digest(
+        if not hmac.compare_digest(
             request.headers.get("X-Ingest-Token", ""), ingest_token
         ):
             return jsonify({"error": "Valid X-Ingest-Token header is required"}), 401

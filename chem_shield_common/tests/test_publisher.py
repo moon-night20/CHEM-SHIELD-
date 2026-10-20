@@ -61,7 +61,7 @@ class PublisherTests(unittest.TestCase):
         "chem_shield_common.publisher._open_local",
         return_value=FakeResponse(1),
     )
-    def test_optional_ingest_token_header_is_sent_only_when_configured(self, open_local):
+    def test_publisher_reads_ingest_token_from_environment(self, open_local):
         with patch.dict(os.environ, {}, clear=True):
             publish_events([{"event_id": "without-token"}], retries=0)
         request_without_token = open_local.call_args.args[0]

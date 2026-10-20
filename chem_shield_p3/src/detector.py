@@ -4,15 +4,18 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import datetime, timezone
+import json
+import pickle
 from pathlib import Path
 from typing import Any
+import warnings
 
 import joblib
 import numpy as np
 import pandas as pd
 import sklearn
 from sklearn.ensemble import IsolationForest
-from sklearn.exceptions import NotFittedError
+from sklearn.exceptions import InconsistentVersionWarning, NotFittedError
 
 from .features import (
     BASE_FEATURE_COLUMNS,
@@ -295,13 +298,92 @@ class PhysicalAnomalyDetector:
             },
             destination,
         )
+        metadata_path = destination.with_suffix(".metadata.json")
+        metadata_path.write_text(
+            json.dumps(
+                {"sklearn_version": self.training_metadata["sklearn_version"]},
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
         return destination
 
     @classmethod
     def load(cls, path: str | Path) -> "PhysicalAnomalyDetector":
         """Load a detector artifact created by :meth:`save`."""
 
-        payload = joblib.load(path)
+        model_path = Path(path)
+        try:
+            with warnings.catch_warnings(record=True) as load_warnings:
+                warnings.simplefilter("always", InconsistentVersionWarning)
+                payload = joblib.load(model_path)
+        except (
+            AttributeError,
+            EOFError,
+            ImportError,
+            IndexError,
+            KeyError,
+            OSError,
+            OverflowError,
+            pickle.UnpicklingError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ) as error:
+            raise RuntimeError(
+                f"Unable to load the model at {model_path}; it may be incompatible "
+                "with the installed scikit-learn version. Retrain it with "
+                "scripts/train_model.py."
+            ) from error
+
+        if not isinstance(payload, dict):
+            raise RuntimeError(
+                f"Model at {model_path} has an unsupported artifact format. "
+                "Retrain it with scripts/train_model.py."
+            )
+
+        metadata_path = model_path.with_suffix(".metadata.json")
+        try:
+            external_metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            external_metadata = {}
+        except (OSError, json.JSONDecodeError) as error:
+            raise RuntimeError(
+                f"Unable to read model metadata at {metadata_path}. "
+                "Retrain it with scripts/train_model.py."
+            ) from error
+        if not isinstance(external_metadata, dict):
+            raise RuntimeError(
+                f"Model metadata at {metadata_path} must be a JSON object. "
+                "Retrain it with scripts/train_model.py."
+            )
+        training_metadata = payload.get("training_metadata", {})
+        recorded_version = external_metadata.get(
+            "sklearn_version",
+            training_metadata.get("sklearn_version")
+            if isinstance(training_metadata, dict)
+            else None,
+        )
+        mismatch_messages = [
+            str(item.message)
+            for item in load_warnings
+            if issubclass(item.category, InconsistentVersionWarning)
+        ]
+        if recorded_version and recorded_version != sklearn.__version__:
+            mismatch_messages.append(
+                f"model was trained with scikit-learn {recorded_version}, "
+                f"but runtime is {sklearn.__version__}"
+            )
+        if mismatch_messages:
+            warnings.warn(
+                "scikit-learn version mismatch while loading model: "
+                + "; ".join(mismatch_messages)
+                + ". Retrain with scripts/train_model.py if loading or prediction fails.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+
         required_keys = {
             "artifact_version",
             "model",

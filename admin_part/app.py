@@ -689,7 +689,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
     def settings():
         return render_template(
             "settings.html",
-            ingest_token_enabled=bool(os.environ.get("CHEM_SHIELD_INGEST_TOKEN")),
+            ingest_token_enabled=True,
             username=session["username"],
             role=session["role"],
         )

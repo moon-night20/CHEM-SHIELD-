@@ -45,6 +45,7 @@ class PipelineIntegrationTests(unittest.TestCase):
                         },
                     ]
                 },
+                headers={"X-Ingest-Token": app.config["INGEST_TOKEN"]},
             )
 
         self.assertEqual(response.status_code, 200)

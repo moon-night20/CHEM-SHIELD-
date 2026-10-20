@@ -20,6 +20,7 @@ class RiskRouteTests(unittest.TestCase):
         )
         self.app.config.update(TESTING=True)
         self.client = self.app.test_client()
+        self.client.environ_base["HTTP_X_INGEST_TOKEN"] = self.app.config["INGEST_TOKEN"]
 
     def tearDown(self):
         self.temp_dir.cleanup()

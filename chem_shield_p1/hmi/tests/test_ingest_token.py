@@ -30,9 +30,21 @@ def _hmi_client(monkeypatch, tmp_path, token=None):
     return app.test_client()
 
 
-def test_ingest_token_is_optional_when_environment_is_unset(monkeypatch, tmp_path):
+def test_generated_ingest_token_is_required_when_environment_is_unset(
+    monkeypatch, tmp_path, caplog
+):
     client = _hmi_client(monkeypatch, tmp_path)
-    response = client.post("/api/risk/events", json=EVENT)
+    app = client.application
+    token = app.config["INGEST_TOKEN"]
+    assert token
+    assert "generated a per-process ingest token" in caplog.text
+    assert token not in caplog.text
+    assert client.post("/api/risk/events", json=EVENT).status_code == 401
+    response = client.post(
+        "/api/risk/events",
+        json=EVENT,
+        headers={"X-Ingest-Token": token},
+    )
     assert response.status_code == 200
 
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import secrets
 import subprocess
 import sys
 import tempfile
@@ -53,13 +55,25 @@ def _wait_for_hmi(url: str, process: subprocess.Popen | None) -> None:
     raise RuntimeError(f"HMI did not become ready at {url}: {last_error}")
 
 
-def _run_producer(command: list[str]) -> None:
+def _demo_environment(
+    environ: dict[str, str] | None = None,
+    *,
+    temporary_hmi: bool = False,
+) -> dict[str, str]:
+    environment = dict(os.environ if environ is None else environ)
+    if temporary_hmi and not environment.get("CHEM_SHIELD_INGEST_TOKEN"):
+        environment["CHEM_SHIELD_INGEST_TOKEN"] = secrets.token_urlsafe(32)
+    return environment
+
+
+def _run_producer(command: list[str], env: dict[str, str]) -> None:
     completed = subprocess.run(
         command,
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
         check=False,
+        env=env,
     )
     if completed.returncode:
         raise RuntimeError(
@@ -114,6 +128,15 @@ def main(argv: list[str] | None = None) -> int:
             hmi_responding = True
         except (HTTPError, URLError, TimeoutError, OSError, ValueError):
             hmi_responding = False
+        if hmi_responding and not os.environ.get("CHEM_SHIELD_INGEST_TOKEN"):
+            raise RuntimeError(
+                "An existing HMI requires its configured CHEM_SHIELD_INGEST_TOKEN "
+                "for publishing. Set the same token for this runner and the HMI, "
+                "then restart the HMI."
+            )
+        child_environment = _demo_environment(
+            temporary_hmi=not hmi_responding and args.start_hmi
+        )
         if not hmi_responding:
             if not args.start_hmi:
                 _wait_for_hmi(risk_url, None)
@@ -134,6 +157,7 @@ def main(argv: list[str] | None = None) -> int:
                         database,
                     ],
                     cwd=REPO_ROOT,
+                    env=child_environment,
                 )
                 _wait_for_hmi(risk_url, process)
 
@@ -146,7 +170,7 @@ def main(argv: list[str] | None = None) -> int:
             "--publish",
             "--hmi-url",
             args.hmi_url,
-        ])
+        ], env=child_environment)
         _run_producer([
             sys.executable,
             "-m",
@@ -158,7 +182,7 @@ def main(argv: list[str] | None = None) -> int:
             "--publish",
             "--hmi-url",
             args.hmi_url,
-        ])
+        ], env=child_environment)
 
         summary = _get_risk_summary(risk_url)
         correlated = _correlated_incidents(summary)

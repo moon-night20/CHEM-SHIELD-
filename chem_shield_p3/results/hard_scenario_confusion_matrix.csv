@@ -1,0 +1,3 @@
+actual,predicted_normal,predicted_anomaly
+normal,64,36
+anomaly,135,85

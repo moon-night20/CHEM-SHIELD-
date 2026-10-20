@@ -70,6 +70,8 @@ def calculate_evaluation(
         detected = int(((actual_subset == 1) & (predicted_subset == 1)).sum())
         normal_samples = int((actual_subset == 0).sum())
         false_positives = int(((actual_subset == 0) & (predicted_subset == 1)).sum())
+        true_negatives = int(((actual_subset == 0) & (predicted_subset == 0)).sum())
+        false_negatives = anomalous - detected
         scenario_rows.append(
             {
                 "scenario": str(scenario),
@@ -80,6 +82,16 @@ def calculate_evaluation(
                 "normal_samples": normal_samples,
                 "false_positives": false_positives,
                 "false_positive_rate": _safe_rate(false_positives, normal_samples),
+                "accuracy": _safe_rate(detected + true_negatives, len(subset)),
+                "precision": _safe_rate(detected, detected + false_positives),
+                "recall": _safe_rate(detected, anomalous),
+                "f1_score": _safe_rate(
+                    2 * detected,
+                    2 * detected + false_positives + false_negatives,
+                ),
+                "true_positives": detected,
+                "true_negatives": true_negatives,
+                "false_negatives": false_negatives,
             }
         )
 
@@ -133,6 +145,31 @@ def calculate_evaluation(
     return metrics, matrix, pd.DataFrame(scenario_rows), pd.DataFrame(latency_rows), errors
 
 
+def summarize_detection_latency(latency: pd.DataFrame) -> pd.DataFrame:
+    """Summarize scenario-level detection delays in observation samples."""
+
+    delays = pd.to_numeric(latency["detection_delay_samples"], errors="coerce").dropna()
+    detected_scenarios = int(latency["detected"].astype(bool).sum())
+    return pd.DataFrame(
+        [
+            {
+                "anomalous_scenarios": int(len(latency)),
+                "detected_scenarios": detected_scenarios,
+                "missed_scenarios": int(len(latency) - detected_scenarios),
+                "mean_detection_delay_samples": (
+                    float(delays.mean()) if not delays.empty else pd.NA
+                ),
+                "median_detection_delay_samples": (
+                    float(delays.median()) if not delays.empty else pd.NA
+                ),
+                "max_detection_delay_samples": (
+                    int(delays.max()) if not delays.empty else pd.NA
+                ),
+            }
+        ]
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Calculate actual ML metrics from labeled synthetic scenario predictions."
@@ -153,6 +190,11 @@ def main() -> None:
     )
     parser.add_argument(
         "--latency-output", type=Path, default=RESULTS_DIR / "detection_latency.csv"
+    )
+    parser.add_argument(
+        "--latency-summary-output",
+        type=Path,
+        default=RESULTS_DIR / "detection_latency_summary.csv",
     )
     parser.add_argument(
         "--errors-output", type=Path, default=RESULTS_DIR / "ml_errors.csv"
@@ -183,12 +225,14 @@ def main() -> None:
     if not isinstance(events, pd.DataFrame):
         raise RuntimeError("batch evaluation requires a DataFrame prediction result")
     metrics, matrix, scenario_rates, latency, errors = calculate_evaluation(events)
+    latency_summary = summarize_detection_latency(latency)
 
     write_csv(events, args.predictions_output)
     write_csv(metrics, args.metrics_output)
     write_csv(matrix, args.confusion_output)
     write_csv(scenario_rates, args.scenario_output)
     write_csv(latency, args.latency_output)
+    write_csv(latency_summary, args.latency_summary_output)
     write_csv(errors, args.errors_output)
 
     metric_values = dict(zip(metrics["metric"], metrics["value"]))
@@ -198,6 +242,19 @@ def main() -> None:
             **metric_values
         )
     )
+    print(
+        "Detection latency: {detected_scenarios}/{anomalous_scenarios} scenarios detected, "
+        "mean={mean_detection_delay_samples} samples".format(
+            **latency_summary.iloc[0].to_dict()
+        )
+    )
+    print("Metrics by scenario:")
+    for row in scenario_rates.itertuples(index=False):
+        print(
+            f"{row.scenario}: accuracy={row.accuracy:.3f}, "
+            f"precision={row.precision:.3f}, recall={row.recall:.3f}, "
+            f"F1={row.f1_score:.3f}, FPR={row.false_positive_rate:.3f}"
+        )
     print(f"Saved evaluation artifacts to {args.metrics_output.parent}")
 
 

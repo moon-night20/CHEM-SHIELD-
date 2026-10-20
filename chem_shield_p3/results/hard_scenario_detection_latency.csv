@@ -1,0 +1,7 @@
+scenario,anomaly_onset_timestamp,first_detection_timestamp,detection_delay_samples,detected
+sudden_change,101,102,1,True
+unstable_behavior,131,132,1,True
+gradual_deviation,161,162,1,True
+heavy_sensor_noise,201,202,1,True
+slow_gradual_drift,241,,,False
+stealthy_in_range,281,,,False

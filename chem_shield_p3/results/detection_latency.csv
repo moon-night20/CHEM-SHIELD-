@@ -1,4 +1,4 @@
 scenario,anomaly_onset_timestamp,first_detection_timestamp,detection_delay_samples,detected
-sudden_change,101,101,0,True
-unstable_behavior,131,131,0,True
-gradual_deviation,161,163,2,True
+sudden_change,101,102,1,True
+unstable_behavior,131,132,1,True
+gradual_deviation,161,162,1,True
