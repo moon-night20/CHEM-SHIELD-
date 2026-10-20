@@ -122,7 +122,7 @@ From the repository root, use the combined project environment:
 
 ```bash
 .venv/bin/python -m chem_shield_p1.hmi.app \
-  --host 127.0.0.1 --port 15000 --plc-port 5020 \
+  --host 127.0.0.1 --port 15000 --plc-port 15020 \
   --database chem_shield_p1/data/telemetry.db
 ```
 

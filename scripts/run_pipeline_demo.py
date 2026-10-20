@@ -152,7 +152,7 @@ def main(argv: list[str] | None = None) -> int:
                         "--port",
                         str(port),
                         "--plc-port",
-                        "5020",
+                        "15020",
                         "--database",
                         database,
                     ],

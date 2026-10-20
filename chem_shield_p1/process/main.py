@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pymodbus.client import ModbusTcpClient
 
 from chem_shield_p1.data.store import TelemetryStore
+from chem_shield_p1.process.modbus_server import DEFAULT_PLC_HOST, DEFAULT_PLC_PORT
 from chem_shield_p1.plc.register_map import EVENT_CODE, EVENT_VALUE
 from .machine import ProcessUnit
 
@@ -77,8 +78,8 @@ def run(host: str, port: int, interval: float, database: str) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="CHEM-SHIELD Virtual Machine process simulator")
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=5020)
+    parser.add_argument("--host", default=DEFAULT_PLC_HOST)
+    parser.add_argument("--port", type=int, default=DEFAULT_PLC_PORT)
     parser.add_argument("--interval", type=float, default=0.5)
     parser.add_argument("--database", default="chem_shield/data/telemetry.db")
     args = parser.parse_args()

@@ -60,7 +60,7 @@ class PipelineIntegrationTests(unittest.TestCase):
             {event["event_type"] for event in incident["events"]},
             {"network", "physical"},
         )
-        device_class.assert_called_once_with("127.0.0.1", 5020)
+        device_class.assert_called_once_with("127.0.0.1", 15020)
 
 
 if __name__ == "__main__":

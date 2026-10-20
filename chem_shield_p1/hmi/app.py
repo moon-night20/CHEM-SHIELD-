@@ -16,6 +16,7 @@ from flask import Flask, jsonify, render_template, request
 from chem_shield_p1.communication.device_connection import DeviceConnection
 from chem_shield_p1.data.store import TelemetryStore
 from chem_shield_p1.events.abnormal_events import write_event
+from chem_shield_p1.process.modbus_server import DEFAULT_PLC_PORT
 from chem_shield_p4.correlation.incident_store import IncidentStore
 from chem_shield_p4.correlation.risk_pipeline import RiskPipeline
 from chem_shield_p5.ot_monitor.ot_monitor import MonitorConfig
@@ -74,7 +75,7 @@ def _admin_url() -> str:
 
 def create_app(
     plc_host="127.0.0.1",
-    plc_port=5020,
+    plc_port=DEFAULT_PLC_PORT,
     database="chem_shield_p1/data/telemetry.db",
     risk_criticality_by_asset=None,
 ):
@@ -397,8 +398,8 @@ def create_app(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="CHEM-SHIELD Virtual Machine operator HMI")
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=5000)
-    parser.add_argument("--plc-port", type=int, default=5020)
+    parser.add_argument("--port", type=int, default=15000)
+    parser.add_argument("--plc-port", type=int, default=DEFAULT_PLC_PORT)
     parser.add_argument("--database", default="chem_shield_p1/data/telemetry.db")
     args = parser.parse_args()
     app = create_app(plc_port=args.plc_port, database=args.database)

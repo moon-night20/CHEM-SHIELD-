@@ -22,6 +22,9 @@ from chem_shield_p1.plc.register_map import (
     encode_temperature,
 )
 
+DEFAULT_PLC_HOST = "127.0.0.1"
+DEFAULT_PLC_PORT = 15020
+
 
 class ProcessRegisterBank:
     """Thread-safe register bank shared by the Modbus server and process loop."""
@@ -73,5 +76,9 @@ def create_context(bank: ProcessRegisterBank) -> ModbusServerContext:
     return ModbusServerContext(slaves=store, single=True)
 
 
-def serve(bank: ProcessRegisterBank, host: str = "127.0.0.1", port: int = 5020) -> None:
+def serve(
+    bank: ProcessRegisterBank,
+    host: str = DEFAULT_PLC_HOST,
+    port: int = DEFAULT_PLC_PORT,
+) -> None:
     StartTcpServer(create_context(bank), address=(host, port))
