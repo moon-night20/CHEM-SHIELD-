@@ -20,6 +20,7 @@ from chem_shield_p4.correlation.incident_store import IncidentStore
 from chem_shield_p4.correlation.risk_pipeline import RiskPipeline
 from chem_shield_p5.ot_monitor.ot_monitor import MonitorConfig
 from chem_shield_p6.response import response_decision
+from chem_shield_p6.warning_popup import warning_popup
 
 DEFAULT_ADMIN_URL = "http://127.0.0.1:5000"
 DEFAULT_OT_CONFIG = (
@@ -78,6 +79,7 @@ def create_app(
     risk_criticality_by_asset=None,
 ):
     app = Flask(__name__)
+    app.register_blueprint(warning_popup)
     ingest_token = os.environ.get("CHEM_SHIELD_INGEST_TOKEN")
     if not ingest_token:
         ingest_token = secrets.token_urlsafe(32)

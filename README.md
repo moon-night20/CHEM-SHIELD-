@@ -331,6 +331,10 @@ Troubleshooting:
 Part 6 is available in the operator HMI's existing risk-alert popup. For an
 active CRITICAL incident, the operator may explicitly confirm a simulated
 stop there; HIGH and lower incidents cannot invoke it. No stop is automatic.
+Part 6 also supplies the HMI's small warning popup: it displays when configured
+machine sensor limits are exceeded or a new MEDIUM/HIGH/CRITICAL event or risk
+incident is reported. Warnings are informational only; opening or dismissing
+one never sends a machine command.
 The endpoint requires a page-generated confirmation token and rejects requests
 unless both the caller and configured PLC address are loopback. The response
 is recorded in the local event log. This is for the virtual PLC lab only; it

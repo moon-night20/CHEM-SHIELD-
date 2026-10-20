@@ -88,6 +88,7 @@ function setState(state) {
   const conditionDetails = $('machine-condition-details');
   conditionDetails.hidden = limitAlerts.length === 0;
   conditionDetails.textContent = limitAlerts.map((alert) => alert.message).join(' · ');
+  window.ChemShieldP6WarningPopup.machineState(state);
   $('state-label').textContent = state.motor_status;
   $('command-state').textContent = state.motor_status;
   $('state-badge').className = `state-badge ${running ? 'running' : state.motor_status === 'PAUSED' ? 'paused' : 'stopped'}`;
@@ -103,6 +104,10 @@ function renderEvents(events) {
   if (!events.length) {
     $('event-list').innerHTML = '<div class="empty-state">No events recorded yet.</div>';
     return;
+  }
+
+  function checkEventWarnings(events) {
+    window.ChemShieldP6WarningPopup.eventWarnings(events);
   }
   $('event-list').innerHTML = events.map((event) => {
     const time = new Date(event.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
@@ -151,6 +156,7 @@ async function refreshRisk() {
   riskRefreshPending = true;
   try {
     const summary = await getJson('/api/risk');
+    window.ChemShieldP6WarningPopup.riskWarnings(summary);
     maybeShowRiskAlert(summary);
   } catch (error) {
     console.warn('Risk alert check failed:', error);

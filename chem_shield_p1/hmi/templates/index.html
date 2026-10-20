@@ -6,6 +6,7 @@
   <meta name="p6-confirm-token" content="{{ p6_confirm_token }}">
   <title>CHEM-SHIELD Virtual Machine | Operator Console</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('p6_warning.static', filename='warning_popup.css') }}">
 </head>
 <body>
   <div class="app-shell">
@@ -40,6 +41,7 @@
       </section>
     </main>
   </div>
+  <div id="warning-toasts" class="warning-toasts" role="region" aria-live="assertive" aria-label="Machine warnings"></div>
   <dialog id="risk-alert-dialog" class="risk-alert-dialog" aria-labelledby="risk-alert-title">
     <p class="eyebrow">OPERATOR ATTENTION REQUIRED</p>
     <h2 id="risk-alert-title">HIGH RISK INCIDENT</h2>
@@ -47,6 +49,7 @@
     <p id="risk-alert-p6-message" class="p6-response-note"></p>
     <div class="risk-alert-actions"><button id="risk-alert-sim-stop" hidden>CONFIRM SIMULATED STOP</button><button id="risk-alert-ack">ACKNOWLEDGE</button><button id="risk-alert-close">CLOSE</button></div>
   </dialog>
+  <script src="{{ url_for('p6_warning.static', filename='warning_popup.js') }}"></script>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>
