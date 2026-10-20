@@ -30,11 +30,12 @@ later lab setup without changing the HMI or process client.
 
 Python 3.10+ is recommended.
 
-Install the Part 1 dependencies from the repository root:
+Install the project dependencies from the repository root so the operator HMI
+and admin console are both available:
 
 ```bash
 python3 -m venv chem_shield_p1/.venv
-chem_shield_p1/.venv/bin/python -m pip install -r chem_shield_p1/requirements.txt
+chem_shield_p1/.venv/bin/python -m pip install -r requirements.txt
 ```
 
 This is the way the project was run during implementation: open three
@@ -59,9 +60,17 @@ Press START and watch the RPM ramp toward the
 target. STOP demonstrates the gradual coast-down and cooling response. The
 TEST MODE controls generate simulation-only ground-truth events.
 
+The operator HMI dedicates its full viewport to the virtual machine, live
+process history, and controls. Detector risk and the persistent incident
+register are shown in the authenticated Admin console.
+
 The operator console shows the PLC connection state, actual and target RPM,
 temperature, pressure, power, operator command history, and the latest machine
 events. Commands and test events are disabled while the PLC is offline.
+Its live process-condition badge reads CRITICAL only while temperature is above
+80 °C, pressure is above 5 bar, or speed is above 3000 rpm; at or below all
+upper limits it reads NORMAL. This is an alert-only simulation status and does
+not stop the machine. The separate Part 4 incident-risk score is unchanged.
 
 ## Register map
 

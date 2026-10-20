@@ -14,10 +14,217 @@ mitigation.
 - [Part 5: OT monitoring entry point](./chem_shield_p5/ot_monitor/README.md)
 - Part 6: operator-confirmed simulated response
 
-The Part 1 HMI hosts the Part 4 incident summary and its SQLite persistence.
-P2 network replay and the P5 physical monitor can explicitly publish scored
-events to its loopback `POST /api/risk/events` endpoint. No background capture
-or automated response is enabled.
+The Part 1 HMI provides the Part 4 risk API and SQLite persistence; detector
+risk and incident history are presented in the separate Admin console. P2
+network replay and the P5 physical monitor can explicitly publish scored
+events to the HMI's loopback `POST /api/risk/events` endpoint. No background
+capture or automated response is enabled.
+
+## Start the complete virtual machine
+
+This starts the local virtual PLC, its physical-process simulator, the
+operator's machine screen, and the separate admin console. Run the commands
+from the repository root. Keep each server terminal open while using the
+machine.
+
+### One-time setup
+
+Python 3.10 or newer is recommended; the current local environment has also
+been exercised with Python 3.9. Create the environment and install the
+repository's combined dependencies once:
+
+```bash
+python3 --version
+python3 -m venv chem_shield_p1/.venv
+chem_shield_p1/.venv/bin/python -m pip install -r requirements.txt
+```
+
+If `chem_shield_p1/.venv` already exists, keep using it; skip the `venv`
+creation command. To create a local admin account on a fresh checkout, run this
+once and enter a password when prompted. The password is not included in the
+command:
+
+```bash
+chem_shield_p1/.venv/bin/python -m admin_part.manage_users create admin --role administrator
+```
+
+User accounts are local to this machine. Their password hashes are kept in the
+ignored `admin_part/data/users.json`, not in the repository. If accounts
+already exist, do not create a duplicate; inspect usernames and roles with:
+
+```bash
+chem_shield_p1/.venv/bin/python -m admin_part.manage_users list
+```
+
+### Start the machine (four terminals)
+
+Open four terminals, set each terminal's working directory to the repository
+root, then run one command in each. Start them in this order.
+
+**Terminal 1 — virtual PLC**
+
+```bash
+chem_shield_p1/.venv/bin/python -m chem_shield_p1.plc.modbus_plc --host 127.0.0.1 --port 15020
+```
+
+This starts PLC-01's local Modbus TCP register server.
+
+**Terminal 2 — physical-process simulator**
+
+```bash
+chem_shield_p1/.venv/bin/python -m chem_shield_p1.process.main --host 127.0.0.1 --port 15020 --database chem_shield_p1/data/telemetry.db
+```
+
+This reads commands from the PLC, advances the fictional motor/process model,
+updates its sensor registers, and appends telemetry to SQLite.
+
+**Terminal 3 — operator machine screen**
+
+```bash
+chem_shield_p1/.venv/bin/python -m chem_shield_p1.hmi.app --host 127.0.0.1 --port 15000 --plc-port 15020 --database chem_shield_p1/data/telemetry.db
+```
+
+This starts the full-screen machine console and connects it to the PLC. Open
+**http://127.0.0.1:15000**. Use **START** to run the simulated motor, **STOP**
+for normal operator stop, **PAUSE** to pause, and **APPLY TARGET** to update
+the simulated RPM target.
+
+**Terminal 4 — admin console**
+
+```bash
+chem_shield_p1/.venv/bin/python -m admin_part.app
+```
+
+Open **http://127.0.0.1:5000** and sign in with a local admin-console account.
+Use its Dashboard and Incidents pages for detector risk and incident review;
+the operator machine controls remain on port 15000. The admin Machine page is
+read-only.
+
+### Stop and restart
+
+To shut down, press **Ctrl+C** in each of the four server terminals. Start
+again in the same order. Use the operator screen's **START** control when you
+are ready to run the simulated motor; detector alerts do not start or stop it.
+Telemetry and risk incidents are stored locally in
+`chem_shield_p1/data/telemetry.db` and persist when the web server restarts.
+
+### Troubleshooting startup
+
+- **PLC address already in use:** confirm no other program is using port
+  `15020`. Stop an older copy with **Ctrl+C** in its terminal, then restart
+  Terminal 1.
+- **HMI shows PLC offline:** verify Terminal 1 and Terminal 2 are running on
+  `127.0.0.1:15020`, and Terminal 3 was started with `--plc-port 15020`.
+- **Admin page cannot open:** verify Terminal 4 is still running on port
+  `5000`; the machine console at port `15000` is a separate service.
+- **Login rejected:** check the local account list with the command above.
+  If needed, create a distinct user with
+  `chem_shield_p1/.venv/bin/python -m admin_part.manage_users create USER --role administrator`;
+  it securely prompts for the password. Repeated failed attempts are
+  rate-limited temporarily.
+- **Dependency/import error:** rerun the pip install command from the
+  repository root using `chem_shield_p1/.venv/bin/python`.
+
+Keep all services bound to `127.0.0.1`. These are fictional simulation
+components, not a real PLC or a safety controller. Do not expose the HMI,
+Modbus port, or admin console to another network.
+
+## How the virtual machine works
+
+The four terminals are separate processes, connected through the same
+interfaces a small lab control system would use:
+
+```text
+Browser / operator
+        |
+        v
+Part 1 operator HMI :15000 ---- Modbus TCP ---- Part 1 virtual PLC :15020
+        |                                            ^
+        |                                            | sensor registers
+        |                                            |
+        +-- SQLite telemetry <---- Part 1 process simulator
+        |
+        +-- Part 4 risk API <---- Part 2 and Part 5 (explicit local publish)
+                 |                           |
+                 +---- SQLite incidents      +-- Part 3 physical model
+                 |
+                 +---- read-only admin feed :5000
+```
+
+- **Part 1 — virtual machine / OT lab:** The PLC server owns an eight-register
+  Modbus holding-register map. The HMI writes the motor command and target RPM;
+  the separate process simulator reads those values, models acceleration,
+  temperature, pressure and power, then writes the resulting readings back.
+  It also stores telemetry and operator/test events in the shared SQLite
+  database. The page is a simulator UI, although its connection panel uses
+  device/PLC terminology.
+- **Part 2 — network-event replay:** Replays sanitized JSON/JSONL fixtures.
+  Its adapters normalize records and a fixture-trained model adds an anomaly
+  score. It does not capture live traffic or connect to the virtual PLC.
+- **Part 3 — physical anomaly model:** Supplies the saved model used to score
+  telemetry features when available. A model score ranks relative anomaly; it
+  is not a probability or a determination of an attack.
+- **Part 4 — event correlation and risk:** Validates and groups scored
+  network/physical events by asset and time, computes the configured
+  experimental risk score, and persists incident history alongside the HMI
+  database. Risk is reviewed in the Admin console. The HMI can display a
+  high/critical alert, but risk does not automatically stop or control the
+  process.
+- **Part 5 — OT physical monitor:** Validates telemetry and applies configured
+  engineering/state rules, optionally scores readings with Part 3, and can
+  explicitly publish scored events to the local Part 4 API. Its rule events
+  are alerts, not PLC commands. CSV sample data is synthetic.
+- **Part 6 — operator-confirmed simulated response:** The HMI offers a
+  simulated stop only for an eligible active CRITICAL risk incident. The
+  operator must explicitly confirm it; no detector, rule, risk score, or admin
+  page automatically stops the machine. It is not a physical safety function.
+
+The HMI's machine-condition badge uses separate demo limits (temperature
+above 80 °C, pressure above 5 bar, or speed above 3000 RPM). It reports
+NORMAL/CRITICAL as a status only and does not cause a stop. This badge is not
+the Part 4 detector-based incident-risk score.
+
+## Run the optional detection demos
+
+The basic four-terminal machine runs without the detection pipeline. Start the
+four services first if you want detector events to appear in the admin live
+risk view.
+
+To replay the bundled network and physical demo fixtures and publish their
+scored events to the loopback HMI:
+
+```bash
+chem_shield_p1/.venv/bin/python -m scripts.run_pipeline_demo
+```
+
+This is a one-shot fixture demonstration, not a background detector. It does
+not connect to or control the virtual PLC.
+
+To run the staged, file-backed P2 -> P3 -> P4 -> P5 chain and write its reports
+under `out/`:
+
+```bash
+chem_shield_p1/.venv/bin/python -m scripts.run_chain --step-by-step
+```
+
+Add `--publish` to explicitly send the scored P2/P3 events from that run to the
+local HMI. The HMI must already be running. This chain uses its configured
+fixture/CSV inputs and is separate from the continuously running Part 1
+machine. See [Pipeline outputs](#strict-sequential-p2-to-p5-chain) for the
+JSON handoffs.
+
+To run Part 5 directly on its bundled synthetic telemetry CSV and publish
+scored events:
+
+```bash
+chem_shield_p1/.venv/bin/python -m chem_shield_p5.ot_monitor \
+  --csv chem_shield_p5/ot_monitor/samples/abnormal_telemetry.csv \
+  --config chem_shield_p5/ot_monitor/config.example.json \
+  --publish --hmi-url http://127.0.0.1:15000/api/risk/events
+```
+
+Published events may use fixture timestamps and represent a demonstration,
+not a live alert. Do not interpret demo scores as current machine condition.
 
 ## Data flow
 
@@ -74,7 +281,7 @@ The handoff contracts are:
 Run the demo using aligned fixture timestamps:
 
 ```bash
-python -m scripts.run_chain --step-by-step
+chem_shield_p1/.venv/bin/python -m scripts.run_chain --step-by-step
 ```
 
 The runner defaults to `chem_shield_p2/fixtures/demo_network_events.json`,
@@ -108,21 +315,11 @@ unless both the caller and configured PLC address are loopback. The response
 is recorded in the local event log. This is for the virtual PLC lab only; it
 does not authorize production connections or safety-system use.
 
-## HMI risk integration
-
-Create the combined environment, install dependencies from the repository
-root, and run the HMI bound to loopback:
-
-```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python -m chem_shield_p1.hmi.app \
-  --host 127.0.0.1 --port 15000 --plc-port 5020 \
-  --database chem_shield_p1/data/telemetry.db
-```
+## Test the risk-event API
 
 Risk input is independent of PLC control and can be tested with sanitized,
-synthetic events:
+synthetic events. Start the HMI using the four-terminal instructions above
+before posting:
 
 ```bash
 curl -X POST http://127.0.0.1:15000/api/risk/events \
@@ -140,7 +337,7 @@ The runner starts a temporary loopback HMI when needed, publishes P2 and P5
 fixture events, then prints the correlated scored incidents:
 
 ```bash
-.venv/bin/python -m scripts.run_pipeline_demo --start-hmi
+chem_shield_p1/.venv/bin/python -m scripts.run_pipeline_demo --start-hmi
 ```
 
 Alternatively, omit `--start-hmi` when the HMI is already running on
@@ -152,11 +349,12 @@ The operator machine HMI (`127.0.0.1:15000`) and supervisor admin console
 (`127.0.0.1:5000`) are separate pages and processes. The HMI's **Admin** link
 opens the console login in a new tab; the admin console has its own credentials
 and session, and provides a **Back to machine HMI** link. The admin console is
-the final, human-in-the-loop view of P4/P5 incidents. It reads
-`out/p4_incidents.json` and `out/p5_report.json`; it does not launch the
-pipeline or change its handoff files. Its Machine page is read-only and reports
-OFFLINE when the HMI is unreachable; START/STOP and test controls remain only
-in the operator HMI.
+the supervisory view of live detector risk and P4/P5 incidents. It reads the
+HMI's live risk feed and `out/p4_incidents.json` / `out/p5_report.json`; it does
+not launch the pipeline or change its handoff files. The operator HMI reserves
+its full screen for the virtual machine. The admin Machine page is read-only
+and reports OFFLINE when the HMI is unreachable; START/STOP and test controls
+remain only in the operator HMI.
 
 ```text
 P2 network scoring -> P3 physical ML -> P4 correlation/risk -> P5 OT validation -> Admin console
@@ -174,18 +372,17 @@ the password is prompted for and stored only as a Werkzeug hash in the ignored
 and login page.
 
 ```bash
-python -m admin_part.manage_users create ADMIN_NAME --role administrator
-python -m admin_part.manage_users list
-python -m admin_part.manage_users delete USER_NAME
+chem_shield_p1/.venv/bin/python -m admin_part.manage_users create ADMIN_NAME --role administrator
+chem_shield_p1/.venv/bin/python -m admin_part.manage_users list
+chem_shield_p1/.venv/bin/python -m admin_part.manage_users delete USER_NAME
 ```
 
-Generate a stable session secret for local use, then run the console:
-
-```bash
-export CHEM_SHIELD_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_hex(32))')"
-python -m scripts.run_chain
-python -m admin_part.app
-```
+The four-terminal startup section above starts the console. If
+`CHEM_SHIELD_SECRET_KEY` is not set, the app generates a random session key at
+startup, so browser sessions reset when the admin process restarts. To retain
+sessions across restarts, set a stable secret in the admin terminal before
+starting the app. The local user accounts and password hashes persist
+independently of the session key.
 
 Open `http://127.0.0.1:5000`. If chain outputs are absent or malformed, the
 console reports that state and shows the chain command. For optional P1 ingest

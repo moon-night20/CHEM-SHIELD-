@@ -86,6 +86,71 @@ class RiskRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("error", response.get_json())
 
+    def test_live_machine_condition_is_critical_only_above_any_configured_limit(self):
+        registers = [1, 1500, 1000, 7999, 499, 500, 0, 0]
+
+        class FakeClient:
+            def read_holding_registers(self, address, count, slave):
+                return SimpleNamespace(isError=lambda: False, registers=registers)
+
+        fake_client = FakeClient()
+        with (
+            patch.object(DeviceConnection, "connect"),
+            patch.object(
+                DeviceConnection,
+                "call",
+                autospec=True,
+                side_effect=lambda _device, action: action(fake_client),
+            ),
+        ):
+            app = create_app(
+                plc_host="127.0.0.1",
+                plc_port=5020,
+                database=str(Path(self.temp_dir.name) / "limits.db"),
+            )
+            app.config.update(TESTING=True)
+            client = app.test_client()
+
+            for sensor, value, event_sensor in (
+                ("temperature", 8000, "temperature"),
+                ("pressure", 500, "pressure"),
+                ("rpm", 3000, "speed"),
+            ):
+                with self.subTest(sensor=sensor):
+                    if sensor == "temperature":
+                        registers[3] = value
+                    elif sensor == "pressure":
+                        registers[4] = value
+                    else:
+                        registers[2] = value
+                    at_limit = client.get("/api/state").get_json()
+                    self.assertEqual(at_limit["machine_condition"], "NORMAL")
+                    self.assertEqual(at_limit["limit_alerts"], [])
+
+                    if sensor == "temperature":
+                        registers[3] += 1
+                    elif sensor == "pressure":
+                        registers[4] += 1
+                    else:
+                        registers[2] += 1
+                    above_limit = client.get("/api/state").get_json()
+                    self.assertEqual(above_limit["machine_condition"], "CRITICAL")
+                    self.assertEqual(
+                        above_limit["limit_alerts"][0]["sensor"],
+                        event_sensor,
+                    )
+                    self.assertEqual(above_limit["motor_status"], "RUNNING")
+
+                    if sensor == "temperature":
+                        registers[3] -= 2
+                    elif sensor == "pressure":
+                        registers[4] -= 2
+                    else:
+                        registers[2] -= 2
+                    normal_again = client.get("/api/state").get_json()
+                    self.assertEqual(normal_again["machine_condition"], "NORMAL")
+                    self.assertEqual(normal_again["limit_alerts"], [])
+
     def _post_critical_incident(self):
         response = self.client.post(
             "/api/risk/events",

@@ -52,22 +52,21 @@ def test_admin_link_rejects_query_parameters_that_could_carry_credentials(tmp_pa
     assert b"token=secret" not in response.data
 
 
-def test_index_sections_render_in_fixed_dashboard_order(tmp_path):
+def test_machine_dashboard_uses_full_viewport_for_the_virtual_machine(tmp_path):
     response = _client(tmp_path).get("/")
     assert response.status_code == 200
     html = response.data.decode("utf-8")
     section_positions = [
         html.index('class="network-strip panel"'),
-        html.index('class="risk-panel panel"'),
         html.index('class="monitor-panel"'),
         html.index('class="control-panel panel"'),
     ]
     assert section_positions == sorted(section_positions)
+    assert 'class="risk-panel panel"' not in html
     assert 'class="admin-link"' in html
     assert 'id="risk-alert-sim-stop"' in html
     assert 'name="p6-confirm-token"' in html
     css = Path(__file__).parents[1].joinpath("static", "style.css").read_text(encoding="utf-8")
     fixed_grid = re.search(r"\.fixed-dashboard\s*\{([^}]*)\}", css)
     assert fixed_grid
-    assert "grid-template-rows:auto auto minmax(0,1fr) auto" in fixed_grid.group(1)
-    assert "max-height:clamp(70px,14vh,150px)" in css
+    assert "grid-template-rows:auto minmax(0,1fr) auto" in fixed_grid.group(1)

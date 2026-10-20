@@ -1,0 +1,21 @@
+<section class="panel live-risk-panel" data-live-risk-panel aria-label="Live detector risk">
+  <div class="live-panel-heading">
+    <div>
+      <p class="eyebrow">PART 4 / LIVE DETECTOR FEED</p>
+      <h2>Incident risk</h2>
+    </div>
+    <span class="live-risk-badge unassessed" data-live-risk-level aria-live="polite">WAITING</span>
+  </div>
+  <div class="live-risk-summary">
+    <div><span>HIGHEST ACTIVE RISK</span><strong data-live-risk-score>--</strong><small>0.0-1.0 scale; not a probability</small></div>
+    <div><span>ALERT INPUT</span><strong data-live-risk-input>NOT CONNECTED</strong><small data-live-risk-updated>No detector events received</small></div>
+    <p>Detector alerts and their persistent incident history are shown here for supervisory review. Risk scores are not probabilities; acknowledgment does not lower risk or resolve an incident.</p>
+  </div>
+  <div class="live-risk-register-heading">
+    <div><p class="eyebrow">PERSISTENT LIVE INCIDENT REGISTER</p><h3>Recent incidents</h3></div>
+    <a href="{{ url_for('incidents_page') }}">Open incident register</a>
+  </div>
+  <div class="live-risk-incidents" data-live-risk-incidents aria-live="polite">
+    <p class="empty-state">Waiting for live detector data.</p>
+  </div>
+</section>

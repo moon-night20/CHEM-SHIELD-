@@ -3,11 +3,13 @@
 import argparse
 import hmac
 import ipaddress
+import json
 import logging
 import os
 import secrets
 import sqlite3
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from flask import Flask, jsonify, render_template, request
@@ -16,9 +18,36 @@ from chem_shield_p1.data.store import TelemetryStore
 from chem_shield_p1.events.abnormal_events import write_event
 from chem_shield_p4.correlation.incident_store import IncidentStore
 from chem_shield_p4.correlation.risk_pipeline import RiskPipeline
+from chem_shield_p5.ot_monitor.ot_monitor import MonitorConfig
 from chem_shield_p6.response import response_decision
 
 DEFAULT_ADMIN_URL = "http://127.0.0.1:5000"
+DEFAULT_OT_CONFIG = (
+    Path(__file__).resolve().parents[2]
+    / "chem_shield_p5"
+    / "ot_monitor"
+    / "config.example.json"
+)
+
+
+def _machine_limit_alerts(state, limits):
+    alerts = []
+    for sensor, state_key, unit in (
+        ("temperature", "temperature", "degC"),
+        ("pressure", "pressure", "bar"),
+        ("speed", "rpm", "rpm"),
+    ):
+        threshold = limits.get(sensor, {}).get("high")
+        value = state[state_key]
+        if threshold is not None and value > threshold:
+            alerts.append({
+                "sensor": sensor,
+                "value": value,
+                "threshold": threshold,
+                "unit": unit,
+                "message": f"{sensor} {value:g} {unit} exceeds the {threshold:g} {unit} upper limit",
+            })
+    return alerts
 
 
 def _admin_url() -> str:
@@ -51,6 +80,11 @@ def create_app(
     app = Flask(__name__)
     app.config["INGEST_TOKEN"] = os.environ.get("CHEM_SHIELD_INGEST_TOKEN")
     app.config["P6_CONFIRM_TOKEN"] = secrets.token_urlsafe(32)
+    app.config["OT_LIMITS_FILE"] = DEFAULT_OT_CONFIG
+    ot_config = json.loads(
+        Path(app.config["OT_LIMITS_FILE"]).read_text(encoding="utf-8")
+    )
+    machine_limits = MonitorConfig.from_dict(ot_config).rules.get("limits", {})
     store = TelemetryStore(database)
     incident_store = IncidentStore(database)
     risk_pipeline = RiskPipeline(
@@ -89,7 +123,13 @@ def create_app(
     @app.get("/api/state")
     def state():
         try:
-            return jsonify(plc_call(read_state))
+            current = plc_call(read_state)
+            alerts = _machine_limit_alerts(current, machine_limits)
+            return jsonify({
+                **current,
+                "machine_condition": "CRITICAL" if alerts else "NORMAL",
+                "limit_alerts": alerts,
+            })
         except (ConnectionError, RuntimeError) as error:
             return jsonify({"error": str(error)}), 503
 

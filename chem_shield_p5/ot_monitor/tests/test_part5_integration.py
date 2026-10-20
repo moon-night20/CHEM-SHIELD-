@@ -18,7 +18,6 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def make_config():
     config_data = json.loads((ROOT / "config.example.json").read_text())
-    config_data["rules"]["limits"]["temperature"]["high"] = 80
     return MonitorConfig.from_dict(config_data)
 
 
@@ -65,6 +64,37 @@ class Part5IntegrationTests(unittest.TestCase):
     def test_part5_replay_module_uses_p5_default_configuration(self):
         from chem_shield_p5.ot_monitor.__main__ import DEFAULT_CONFIG
         self.assertEqual(DEFAULT_CONFIG, ROOT / "config.example.json")
+
+    def test_default_upper_limits_alert_only_above_the_configured_value(self):
+        config = make_config()
+        cases = (
+            ("temperature", 80, "temperature_high"),
+            ("pressure", 5, "pressure_high"),
+            ("speed", 3000, "speed_high"),
+        )
+        normal_reading = {
+            "timestamp": "2026-10-14T09:30:00Z",
+            "asset_id": "M-01",
+            "temperature": 25,
+            "pressure": 2,
+            "speed": 500,
+            "operating_state": "RUNNING",
+            "measurement_origin": "synthetic_test",
+        }
+
+        for sensor, limit, expected_event in cases:
+            with self.subTest(sensor=sensor):
+                at_limit = dict(normal_reading, **{sensor: limit})
+                self.assertEqual(OTMonitor(config).process([at_limit]), [])
+
+                above_limit = dict(normal_reading, **{sensor: limit + 1})
+                events = OTMonitor(config).process([above_limit])
+                self.assertEqual([event["event_type"] for event in events], [expected_event])
+                self.assertEqual(events[0]["severity"], "high")
+                self.assertEqual(
+                    events[0]["evidence"]["configured_threshold"],
+                    limit,
+                )
 
 
 if __name__ == "__main__":

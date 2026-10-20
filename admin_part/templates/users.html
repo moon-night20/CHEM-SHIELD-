@@ -9,6 +9,6 @@
       <table><thead><tr><th>Username</th><th>Role</th></tr></thead>
         <tbody>{% for user in users %}<tr><td>{{ user.username }}</td><td>{{ user.role }}</td></tr>{% endfor %}</tbody>
       </table>
-    {% else %}<p class="empty-state">No users configured. Create one with <code>python -m admin_part.manage_users create USER --role administrator</code>.</p>{% endif %}
+    {% else %}<p class="empty-state">No users configured. Create one with <code>chem_shield_p1/.venv/bin/python -m admin_part.manage_users create USER --role administrator</code>.</p>{% endif %}
   </section>
 {% endblock %}

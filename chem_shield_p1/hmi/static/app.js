@@ -4,7 +4,6 @@ const trendHistory = [];
 const trendLimit = 60;
 let sequenceCounter = 0;
 let selectedFocus = 'temperature';
-let allIncidents = [];
 let alertIncidentId = null;
 let lastNotifiedIncident = null;
 let refreshPending = false;
@@ -78,6 +77,17 @@ function setNetworkStatus(connection) {
 
 function setState(state) {
   const running = state.motor_status === 'RUNNING';
+  const condition = state.machine_condition || 'NORMAL';
+  const limitAlerts = state.limit_alerts || [];
+  const conditionBadge = $('machine-condition');
+  conditionBadge.textContent = condition;
+  conditionBadge.className = `machine-condition ${condition.toLowerCase()}`;
+  conditionBadge.title = limitAlerts.length
+    ? limitAlerts.map((alert) => alert.message).join('; ')
+    : 'Current sensor readings are within configured upper limits';
+  const conditionDetails = $('machine-condition-details');
+  conditionDetails.hidden = limitAlerts.length === 0;
+  conditionDetails.textContent = limitAlerts.map((alert) => alert.message).join(' · ');
   $('state-label').textContent = state.motor_status;
   $('command-state').textContent = state.motor_status;
   $('state-badge').className = `state-badge ${running ? 'running' : state.motor_status === 'PAUSED' ? 'paused' : 'stopped'}`;
@@ -115,67 +125,6 @@ async function getJson(url, options) {
   }
 }
 
-function appendText(parent, tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  node.textContent = text;
-  parent.appendChild(node);
-  return node;
-}
-
-function renderIncidents(incidents) {
-  const list = $('incident-list');
-  const filter = $('incident-filter').value;
-  allIncidents = incidents;
-  const visibleIncidents = allIncidents.filter((incident) => {
-    if (filter === 'all') return true;
-    if (filter === 'active') return incident.status === 'ACTIVE';
-    if (filter === 'unacknowledged') return !incident.acknowledged && incident.status === 'ACTIVE';
-    return incident.risk_level.toLowerCase() === filter;
-  });
-  list.replaceChildren();
-  if (!visibleIncidents.length) {
-    appendText(list, 'p', 'incident-empty', incidents.length ? 'No incidents match this filter.' : 'No incidents recorded.');
-    return;
-  }
-  visibleIncidents.forEach((incident) => {
-    const level = (incident.risk_level || 'UNASSESSED').toLowerCase();
-    const card = document.createElement('article');
-    card.className = `incident-card ${level}`;
-    card.dataset.incidentId = incident.incident_id;
-    const head = appendText(card, 'div', 'incident-card-head', '');
-    appendText(head, 'span', 'incident-id', `${incident.incident_id} · ${incident.asset_id}`);
-    const actions = appendText(head, 'div', 'incident-actions', '');
-    appendText(actions, 'span', `risk-badge ${level}`, incident.risk_level);
-    if (incident.acknowledged) {
-      appendText(actions, 'span', 'acknowledged-label', 'ACKNOWLEDGED');
-    } else if (incident.status === 'ACTIVE') {
-      const ack = appendText(actions, 'button', '', 'ACKNOWLEDGE');
-      ack.type = 'button';
-      ack.dataset.ackIncident = incident.incident_id;
-    }
-    appendText(
-      card,
-      'p',
-      'incident-meta',
-      `${incident.status} · ${incident.events.length} event(s) · ${new Date(incident.start_time).toLocaleString()}${incident.risk_score === null ? ' · score unavailable' : ` · score ${Number(incident.risk_score).toFixed(3)}`}`
-    );
-    const details = document.createElement('details');
-    appendText(details, 'summary', '', 'Evidence and detections');
-    incident.events.forEach((event) => {
-      const evidence = typeof event.evidence === 'string' ? event.evidence : JSON.stringify(event.evidence || {});
-      appendText(
-        details,
-        'p',
-        'incident-evidence',
-        `${event.source || 'unknown source'} · ${event.detection_type || event.event_type}${event.anomaly_score === null ? ' · no anomaly score' : ` · score ${event.anomaly_score}`}${evidence ? ` · ${evidence}` : ''}`
-      );
-    });
-    card.appendChild(details);
-    list.appendChild(card);
-  });
-}
-
 function maybeShowRiskAlert(summary) {
   const incident = (summary.active_incidents || [])
     .filter((item) => !item.acknowledged && ['HIGH', 'CRITICAL'].includes(item.risk_level))
@@ -202,22 +151,9 @@ async function refreshRisk() {
   riskRefreshPending = true;
   try {
     const summary = await getJson('/api/risk');
-    const level = summary.risk_level.toLowerCase();
-    $('risk-badge').textContent = summary.risk_level;
-    $('risk-badge').className = `risk-badge ${level}`;
-    $('risk-score').textContent = summary.risk_score === null ? '--' : Number(summary.risk_score).toFixed(3);
-    $('risk-input-status').textContent = summary.input_status.replaceAll('_', ' ');
-    $('risk-last-update').textContent = summary.last_received_at
-      ? `Last event ${new Date(summary.last_received_at).toLocaleString()}`
-      : 'No risk events received';
-    renderIncidents(summary.recent_incidents || []);
     maybeShowRiskAlert(summary);
   } catch (error) {
-    $('risk-badge').textContent = 'UNAVAILABLE';
-    $('risk-badge').className = 'risk-badge unassessed';
-    $('risk-score').textContent = '--';
-    $('risk-input-status').textContent = 'ERROR';
-    $('risk-last-update').textContent = error.message;
+    console.warn('Risk alert check failed:', error);
   } finally {
     riskRefreshPending = false;
   }
@@ -326,11 +262,6 @@ async function changeConnection(action) {
 $('connect-device').addEventListener('click', () => changeConnection('connect'));
 $('disconnect-device').addEventListener('click', () => changeConnection('disconnect'));
 $('reconnect-device').addEventListener('click', () => changeConnection('reconnect'));
-$('incident-filter').addEventListener('change', () => renderIncidents(allIncidents));
-$('incident-list').addEventListener('click', (event) => {
-  const button = event.target.closest('[data-ack-incident]');
-  if (button) void acknowledgeIncident(button.dataset.ackIncident);
-});
 $('risk-alert-ack').addEventListener('click', () => {
   if (alertIncidentId) void acknowledgeIncident(alertIncidentId);
 });

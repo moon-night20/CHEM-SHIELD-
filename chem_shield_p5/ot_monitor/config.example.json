@@ -28,9 +28,9 @@
   "model_anomaly_severity": "medium",
   "rules": {
     "limits": {
-      "temperature": {"low": null, "high": null, "low_severity": "high", "high_severity": "high"},
-      "pressure": {"low": null, "high": null, "low_severity": "high", "high_severity": "high"},
-      "speed": {"low": null, "high": null, "low_severity": "high", "high_severity": "high"}
+      "temperature": {"low": null, "high": 80, "low_severity": "high", "high_severity": "high"},
+      "pressure": {"low": null, "high": 5, "low_severity": "high", "high_severity": "high"},
+      "speed": {"low": null, "high": 3000, "low_severity": "high", "high_severity": "high"}
     },
     "rate_of_change": {
       "temperature": null,

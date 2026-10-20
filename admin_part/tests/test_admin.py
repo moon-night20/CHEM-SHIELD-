@@ -202,6 +202,17 @@ def test_role_page_access(setup_console, username, password, allowed, forbidden)
         assert client.get(route).status_code == 403
 
 
+def test_live_detector_risk_is_available_in_admin_incident_views(setup_console):
+    _, client, *_ = setup_console
+    assert login(client, "admin", "Admin-password-123").status_code == 302
+    dashboard = client.get("/dashboard")
+    incident_register = client.get("/incidents")
+    assert dashboard.status_code == incident_register.status_code == 200
+    for response in (dashboard, incident_register):
+        assert b'data-live-risk-panel' in response.data
+        assert b'PERSISTENT LIVE INCIDENT REGISTER' in response.data
+
+
 def test_operator_is_forbidden_from_actions_and_audit(setup_console):
     app, client, *_ = setup_console
     login(client, "operator", "Operator-password-123")

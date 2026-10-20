@@ -103,11 +103,17 @@ CSV data is synthetic and does not establish real-world accuracy.
 ## Configuration and operational safety
 
 `config.example.json` sets default sensor names, units, and the risk asset
-mapping, but deliberately
-leaves engineering limits and plausibility ranges unset. Configure those from
-validated equipment specifications and approved operating procedures. Rule
-alerts are deterministic engineering/state checks and remain independent of
-statistical model scores.
+mapping. For this fictional simulator only, it also sets upper alert limits of
+80 °C temperature, 5 bar pressure, and 3000 rpm speed. Values at or below each
+limit do not trigger that upper-limit rule; values above it create a high
+severity OT event. These are demo thresholds, not validated equipment safety
+limits. The lower limits and plausibility ranges remain unset. Rule alerts are
+deterministic engineering/state checks and remain independent of statistical
+model scores.
+
+These events are alert-only: they do not stop the simulator. Part 6 can offer
+its separate simulated stop only after an operator explicitly confirms an
+eligible CRITICAL incident in the HMI.
 
 Supported rule checks include configured upper/lower bounds, rate-of-change
 limits, fluctuations, state-specific sensor ranges, and speed expectations

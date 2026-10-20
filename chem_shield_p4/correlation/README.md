@@ -157,9 +157,9 @@ routes with a deliberately disconnected loopback PLC.
 
 Completed: canonical risk engine; compatibility re-export; event
 normalization and correlation; deduplication; additive SQLite incident/event
-persistence; history/detail/acknowledgement API; HMI risk summary, evidence
-register, severity filtering, acknowledgement, and high/critical notification
-dialog.
+persistence; history/detail/acknowledgement API; authenticated admin-console
+risk summary and live incident register; HMI high/critical notification dialog
+with explicit operator confirmation for any simulated stop.
 
 Connected by explicit CLI invocation: P2's network replay and P5's physical
 monitor use the publisher with `--publish`; they do not stream in the
