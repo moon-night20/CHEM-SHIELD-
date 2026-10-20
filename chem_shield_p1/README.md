@@ -87,6 +87,16 @@ pressure, and power are stored as integer hundredths.
 | 5 | Power | Process -> PLC | kW x 100 |
 | 6 | Event code | Test mode -> process | 0 none, 1 RPM deviation, 2 temperature increase, 3 pressure spike, 4 sensor inconsistency |
 | 7 | Event value | Test mode -> process | Event-specific fictional value |
+| 8 | Simulation override mask | Local test console -> process | Bit 0 temperature, bit 1 pressure, bit 2 power, bit 3 speed; zero clears all overrides |
+| 9 | Simulated temperature override | Local test console -> process | Celsius x 100 |
+| 10 | Simulated pressure override | Local test console -> process | bar x 100 |
+| 11 | Simulated power override | Local test console -> process | kW x 100 |
+| 12 | Simulated speed override | Local test console -> process | RPM |
+
+The Part 1 HMI continues using addresses 0–7. The loopback-only command console
+uses addresses 8–12 to hold manually entered sensor overrides; each active bit
+keeps that simulated value fixed until replaced or cleared. The register bank
+therefore contains 13 holding registers.
 
 ## Outputs for later CHEM-SHIELD phases
 

@@ -56,7 +56,9 @@ def test_starts_readme_commands_in_order_without_network() -> None:
         stream=output,
     )
     try:
-        assert [child.name for child in children] == ["PLC", "Process", "HMI", "Admin"]
+        assert [child.name for child in children] == [
+            "PLC", "Process", "HMI", "Admin", "OT Console"
+        ]
         assert len(readiness_checks) == 1
         assert readiness_checks[0][:2] == ("127.0.0.1", 15020)
         assert readiness_checks[0][2] is launched[0]
@@ -67,10 +69,12 @@ def test_starts_readme_commands_in_order_without_network() -> None:
             "chem_shield_p1.process.main",
             "chem_shield_p1.hmi.app",
             "admin_part.app",
+            "the_attack.app",
         ]
         assert all("127.0.0.1" in command for command in commands[:3])
         assert all("15020" in command for command in commands[:3])
         assert "15000" in commands[2]
+        assert "5001" in commands[4]
         assert all(process.command[0] == "python-test" for process in launched)
     finally:
         run_all.stop_services(children)

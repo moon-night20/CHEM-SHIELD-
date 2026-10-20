@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="console-token" content="{{ csrf_token }}">
+  <title>CHEM-SHIELD | Virtual Machine Commands</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">CHEM-SHIELD / VIRTUAL MACHINE</p>
+        <h1>Set a machine value</h1>
+        <p class="subhead">Enter a value and submit it to the local simulator.</p>
+      </div>
+    </header>
+
+    <section class="command-card">
+      <form id="command-form">
+        <label for="parameter">Machine setting</label>
+        <select id="parameter" name="parameter">
+          <option value="temperature">Temperature (°C)</option>
+          <option value="power">Power (kW)</option>
+          <option value="pressure">Pressure (bar)</option>
+          <option value="speed">Speed (RPM)</option>
+        </select>
+        <label for="value">Value <span id="unit"></span></label>
+        <input id="value" name="value" type="number" required step="any" inputmode="decimal" autofocus>
+        <p class="range-note" id="range-note"></p>
+        <button type="submit" class="submit-button" id="submit-button">Submit value</button>
+        <p class="form-result" id="form-result" role="status" aria-live="polite"></p>
+      </form>
+      <div class="override-actions">
+        <span>Submitted values stay set until changed or cleared.</span>
+        <button type="button" class="clear-button" id="clear-overrides">Clear values</button>
+      </div>
+      <p class="safety-note">Local virtual machine only. No physical equipment is controlled.</p>
+    </section>
+  </main>
+  <script src="{{ url_for('static', filename='console.js') }}"></script>
+</body>
+</html>

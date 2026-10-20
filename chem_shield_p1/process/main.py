@@ -10,12 +10,25 @@ from pymodbus.client import ModbusTcpClient
 
 from chem_shield_p1.data.store import TelemetryStore
 from chem_shield_p1.process.modbus_server import DEFAULT_PLC_HOST, DEFAULT_PLC_PORT
-from chem_shield_p1.plc.register_map import EVENT_CODE, EVENT_VALUE
+from chem_shield_p1.plc.register_map import (
+    EVENT_CODE,
+    EVENT_VALUE,
+    OVERRIDE_POWER,
+    OVERRIDE_PRESSURE,
+    OVERRIDE_SPEED,
+    OVERRIDE_TEMPERATURE,
+    REGISTER_COUNT,
+    SIM_OVERRIDE_MASK,
+    SIM_POWER,
+    SIM_PRESSURE,
+    SIM_SPEED,
+    SIM_TEMPERATURE,
+)
 from .machine import ProcessUnit
 
 
 def read_registers(client) -> list[int]:
-    result = client.read_holding_registers(0, count=8, slave=1)
+    result = client.read_holding_registers(0, count=REGISTER_COUNT, slave=1)
     if result.isError():
         raise RuntimeError(result)
     return result.registers
@@ -25,6 +38,19 @@ def write_registers(client, values: list[int]) -> None:
     result = client.write_registers(0, values, slave=1)
     if result.isError():
         raise RuntimeError(result)
+
+
+def apply_simulation_overrides(state, registers: list[int]) -> None:
+    """Apply explicitly enabled local test values to simulated sensor state."""
+    mask = registers[SIM_OVERRIDE_MASK]
+    if mask & OVERRIDE_TEMPERATURE:
+        state.temperature = registers[SIM_TEMPERATURE] / 100.0
+    if mask & OVERRIDE_PRESSURE:
+        state.pressure = registers[SIM_PRESSURE] / 100.0
+    if mask & OVERRIDE_POWER:
+        state.power = registers[SIM_POWER] / 100.0
+    if mask & OVERRIDE_SPEED:
+        state.rpm = float(registers[SIM_SPEED])
 
 
 def run(host: str, port: int, interval: float, database: str) -> None:
@@ -51,7 +77,9 @@ def run(host: str, port: int, interval: float, database: str) -> None:
             elif not paused and event_code == 4:
                 unit.state.rpm += 250
 
-            values = list(registers)
+            apply_simulation_overrides(unit.state, registers)
+
+            values = list(registers[:8])
             values[2] = round(unit.state.rpm)
             values[3] = round(unit.state.temperature * 100)
             values[4] = round(unit.state.pressure * 100)

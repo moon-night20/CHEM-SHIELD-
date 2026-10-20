@@ -23,6 +23,7 @@
         <a class="nav-link" href="{{ url_for('settings') }}">Settings</a>
       {% endif %}
       <a class="nav-link hmi-link" href="{{ hmi_url }}" rel="noopener noreferrer">Back to machine HMI</a>
+      <a class="nav-link command-link" href="{{ command_console_url }}">Attack Console</a>
       <form method="post" action="{{ url_for('logout') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="link-button nav-link" type="submit">Log out</button>

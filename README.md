@@ -28,7 +28,8 @@ capture or automated response is enabled.
 ## Start the complete virtual machine
 
 This starts the local virtual PLC, its physical-process simulator, the
-operator's machine screen, and the separate admin console. Run the commands
+operator's machine screen, the separate admin console, and the OT Command
+Testing Console. Run the commands
 from the repository root. Keep each server terminal open while using the
 machine.
 
@@ -61,9 +62,9 @@ already exist, do not create a duplicate; inspect usernames and roles with:
 chem_shield_p1/.venv/bin/python -m admin_part.manage_users list
 ```
 
-### Start the machine (four terminals)
+### Start the machine (five terminals)
 
-Open four terminals, set each terminal's working directory to the repository
+Open five terminals, set each terminal's working directory to the repository
 root, then run one command in each. Start them in this order.
 
 **Terminal 1 — virtual PLC**
@@ -105,6 +106,35 @@ Use its Dashboard and Incidents pages for detector risk and incident review;
 the operator machine controls remain on port 15000. The admin Machine page is
 read-only.
 
+**Terminal 5 — OT Command Testing Console**
+
+```bash
+chem_shield_p1/.venv/bin/python -m the_attack.app --host 127.0.0.1 --port 5001 --plc-port 15020 --database chem_shield_p1/data/telemetry.db
+```
+
+Open **http://127.0.0.1:5001**. This separate, loopback-only page accepts a
+numeric temperature, power, pressure, or speed value and applies it directly
+to the corresponding simulated machine telemetry. Values remain active until
+changed or cleared with **Clear all overrides**. Supported ranges are
+temperature **0–120 °C**, power **0–20 kW**, pressure **0–10 bar**, and speed
+**0–3000 RPM** (whole numbers). Accepted requests are audited; the history
+stays pending until later telemetry confirms the requested value. The console
+uses configured OT limits and records threshold warnings in the shared local
+database; it does not automatically create risk incidents or start/stop the
+motor. Use the **Attack Console** link in the Admin navigation or **Open Attack
+Console** on the Incidents page.
+
+Configured upper warning limits remain **80 °C**, **5 bar**, and **3000 RPM**;
+input bounds do not change those monitoring thresholds. Power has no configured
+upper warning limit. These are simulated sensor-value overrides only and do
+not operate physical equipment.
+
+Run the focused tests with:
+
+```bash
+chem_shield_p1/.venv/bin/python -m pytest -q the_attack/tests/test_console.py scripts/chain/tests/test_run_all.py
+```
+
 ### One-command demo launcher
 
 From the repository root, run the cross-platform launcher with the Python
@@ -114,15 +144,15 @@ environment configured above:
 python scripts/run_all.py
 ```
 
-It starts the same four commands in the same order, waits for the virtual PLC
+It starts the same five commands in the same order, waits for the virtual PLC
 on `127.0.0.1:15020` before starting its dependents, and prefixes each child's
 output with its service name. Press **Ctrl+C** once to stop all children. The
 launcher refuses non-loopback hosts. To use the individual commands instead,
-keep using the four-terminal instructions above.
+keep using the five-terminal instructions above.
 
 ### Stop and restart
 
-To shut down, press **Ctrl+C** in each of the four server terminals. Start
+To shut down, press **Ctrl+C** in each of the five server terminals. Start
 again in the same order. Use the operator screen's **START** control when you
 are ready to run the simulated motor; detector alerts do not start or stop it.
 Telemetry and risk incidents are stored locally in
@@ -142,6 +172,8 @@ Telemetry and risk incidents are stored locally in
   `chem_shield_p1/.venv/bin/python -m admin_part.manage_users create USER --role administrator`;
   it securely prompts for the password. Repeated failed attempts are
   rate-limited temporarily.
+- **OT Command Testing Console cannot connect:** verify the PLC and process
+  simulator are running on `127.0.0.1:15020`; the console is on port `5001`.
 - **Dependency/import error:** rerun the pip install command from the
   repository root using `chem_shield_p1/.venv/bin/python`.
 

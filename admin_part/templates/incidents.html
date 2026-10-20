@@ -6,7 +6,10 @@
       <h1>Incident register</h1>
       <p>Data source: <strong>{{ source_label }}</strong>. Chain last updated: {{ chain_updated or "not available" }}</p>
     </div>
-    <p class="safety-label">Simulation only - decisions are recorded, not executed.</p>
+    <div class="incident-actions">
+      <a class="command-console-button" href="{{ command_console_url }}">Open Attack Console</a>
+      <p class="safety-label">Simulation only - decisions are recorded, not executed.</p>
+    </div>
   </section>
   {% include "_live_risk_panel.html" %}
   {% if errors %}

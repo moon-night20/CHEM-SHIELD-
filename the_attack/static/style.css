@@ -1,0 +1,45 @@
+:root {
+  color-scheme: dark;
+  --bg: #0b1220;
+  --panel: #111d30;
+  --line: #283b55;
+  --text: #e7edf6;
+  --muted: #98a9bf;
+  --cyan: #48c7d5;
+  --green: #59d6a1;
+  --red: #ff777e;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: radial-gradient(ellipse at 10% 0%, #14233b 0, var(--bg) 45%);
+  color: var(--text);
+  font: 16px/1.5 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+.shell { width: min(600px, calc(100% - 32px)); margin: 10vh auto; }
+.topbar { margin-bottom: 22px; }
+.eyebrow { margin: 0 0 5px; color: var(--cyan); font-size: 11px; font-weight: 800; letter-spacing: .12em; }
+h1 { margin: 0; font-size: clamp(27px, 5vw, 36px); letter-spacing: -.03em; }
+.subhead { margin: 7px 0 0; color: var(--muted); }
+.command-card { padding: 24px; border: 1px solid var(--line); border-radius: 12px; background: rgba(17, 29, 48, .96); }
+form { display: grid; gap: 9px; }
+label { margin-top: 4px; color: var(--muted); font-size: 13px; font-weight: 700; }
+input, select, button { font: inherit; }
+input, select { width: 100%; min-height: 48px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 7px; background: #0b1627; color: var(--text); }
+input:focus, select:focus { outline: 2px solid rgba(72, 199, 213, .4); border-color: var(--cyan); }
+.range-note { margin: 0; color: var(--muted); font-size: 12px; }
+button { cursor: pointer; }
+.submit-button { min-height: 48px; margin-top: 6px; padding: 11px; border: 0; border-radius: 7px; background: var(--cyan); color: #07121e; font-weight: 800; }
+.submit-button:disabled, .clear-button:disabled { cursor: wait; opacity: .65; }
+.form-result { min-height: 24px; margin: 7px 0 0; color: var(--green); font-size: 13px; }
+.form-result.error { color: var(--red); }
+.override-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; color: var(--muted); font-size: 12px; }
+.clear-button { flex: 0 0 auto; padding: 8px 11px; border: 1px solid var(--line); border-radius: 7px; background: transparent; color: var(--text); }
+.clear-button:hover, .clear-button:focus-visible { border-color: var(--cyan); }
+.safety-note { margin: 18px 0 0; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+@media (max-width: 480px) {
+  .shell { margin: 7vh auto; }
+  .command-card { padding: 18px; }
+  .override-actions { align-items: flex-start; flex-direction: column; }
+}

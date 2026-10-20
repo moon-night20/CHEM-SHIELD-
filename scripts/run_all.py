@@ -19,6 +19,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 LOOPBACK_HOST = "127.0.0.1"
 PLC_PORT = 15020
 HMI_PORT = 15000
+OT_CONSOLE_PORT = 5001
 PLC_READY_TIMEOUT = 30.0
 SHUTDOWN_TIMEOUT = 5.0
 
@@ -48,7 +49,7 @@ def build_commands(
     python_executable: str = sys.executable,
     host: str = LOOPBACK_HOST,
 ) -> list[tuple[str, list[str]]]:
-    """Return the four server commands in README startup order."""
+    """Return the local demo service commands in README startup order."""
 
     safe_host = _loopback_host(host)
     return [
@@ -95,6 +96,22 @@ def build_commands(
             ],
         ),
         ("Admin", [python_executable, "-m", "admin_part.app"]),
+        (
+            "OT Console",
+            [
+                python_executable,
+                "-m",
+                "the_attack.app",
+                "--host",
+                safe_host,
+                "--port",
+                str(OT_CONSOLE_PORT),
+                "--plc-port",
+                str(PLC_PORT),
+                "--database",
+                "chem_shield_p1/data/telemetry.db",
+            ],
+        ),
     ]
 
 
@@ -203,7 +220,8 @@ def main(argv: list[str] | None = None) -> int:
         children = start_services(args.host)
         print(
             f"All services started on loopback. HMI: http://{LOOPBACK_HOST}:{HMI_PORT} "
-            f"Admin: http://{LOOPBACK_HOST}:5000. Press Ctrl+C to stop.",
+            f"Admin: http://{LOOPBACK_HOST}:5000 OT Console: "
+            f"http://{LOOPBACK_HOST}:{OT_CONSOLE_PORT}. Press Ctrl+C to stop.",
             flush=True,
         )
         while True:

@@ -262,10 +262,16 @@ def test_role_navigation_and_machine_offline_status(setup_console):
     assert b"Dashboard" in dashboard.data
     assert b"Machine" in dashboard.data
     assert b"Incidents" in dashboard.data
+    assert b">Attack Console</a>" in dashboard.data
+    assert b'href="http://127.0.0.1:5001"' in dashboard.data
     assert b"Audit" not in dashboard.data
     assert b"Users" not in dashboard.data
     assert b"Back to machine HMI" in dashboard.data
     assert b'href="http://127.0.0.1:15000"' in dashboard.data
+    incidents = client.get("/incidents")
+    assert incidents.status_code == 200
+    assert b"Open Attack Console" in incidents.data
+    assert b'href="http://127.0.0.1:5001"' in incidents.data
     machine = client.get("/machine")
     assert machine.status_code == 200
     assert b"OFFLINE" in machine.data

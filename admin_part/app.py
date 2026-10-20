@@ -42,6 +42,7 @@ from admin_part.manage_users import ROLES
 BASE_DIR = Path(__file__).resolve().parent
 REPO_ROOT = BASE_DIR.parent
 DEFAULT_ADMIN_HOST = "127.0.0.1"
+DEFAULT_COMMAND_CONSOLE_URL = "http://127.0.0.1:5001"
 MAX_FAILURES = 5
 LOCKOUT_MINUTES = 5
 SESSION_MINUTES = 20
@@ -199,7 +200,10 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
 
     @app.context_processor
     def shared_template_context():
-        return {"hmi_url": app.config["HMI_URL"]}
+        return {
+            "hmi_url": app.config["HMI_URL"],
+            "command_console_url": DEFAULT_COMMAND_CONSOLE_URL,
+        }
 
     def audit(
         action: str,

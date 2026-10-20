@@ -218,6 +218,36 @@ a {
   border: 1px solid #3b506b;
 }
 
+.user-panel .command-link {
+  border: 1px solid #47bdca;
+  background: #12323c;
+  color: #a7f0f1;
+  font-weight: 700;
+}
+
+.incident-actions {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+
+.command-console-button {
+  display: inline-block;
+  padding: 10px 14px;
+  border: 1px solid #47bdca;
+  border-radius: 7px;
+  background: #12323c;
+  color: #a7f0f1;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.command-console-button:hover,
+.command-console-button:focus-visible {
+  background: #1b4651;
+  color: #ffffff;
+}
+
 .user-panel form {
   display: inline-flex;
 }
