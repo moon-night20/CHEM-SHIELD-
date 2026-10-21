@@ -366,6 +366,8 @@ def test_dashboard_merges_chain_outputs_and_handles_missing_or_malformed(setup_c
     assert b"INC-0001" in dashboard.data
     assert b"0.804" in dashboard.data
     assert b"Confirmed" in dashboard.data
+    assert b"MACHINE READING RISK" in dashboard.data
+    assert b"Detector risk" in dashboard.data
 
     p4_path.unlink()
     missing = client.get("/dashboard")
@@ -528,6 +530,7 @@ def test_live_api_returns_machine_data_and_safe_offline_result(setup_console):
     assert online_data["ok"] is True
     assert online_data["state"]["data"]["rpm"] == 1500
     assert online_data["risk"]["data"]["risk_level"] == "HIGH"
+    assert online_data["machine_risk"]["risk_level"] == "UNAVAILABLE"
 
     live_result.responses["state"] = {
         "ok": False, "data": None, "error": "connection refused",
@@ -539,6 +542,55 @@ def test_live_api_returns_machine_data_and_safe_offline_result(setup_console):
     assert offline_data["ok"] is False
     assert offline_data["state"]["data"] is None
     assert offline_data["state"]["error"] == "connection refused"
+
+
+@pytest.mark.parametrize(
+    ("sensor", "ratio", "expected_level"),
+    [
+        ("temperature", 0.74, "NORMAL"),
+        ("temperature", 0.75, "MEDIUM"),
+        ("temperature", 1.0, "MEDIUM"),
+        ("temperature", 1.001, "CRITICAL"),
+        ("pressure", 1.001, "CRITICAL"),
+        ("power", 1.001, "CRITICAL"),
+        ("speed", 1.001, "CRITICAL"),
+    ],
+)
+def test_live_machine_risk_uses_configured_limit_ratio_bands(
+    setup_console, sensor, ratio, expected_level
+):
+    _, client, *_ = setup_console
+    login(client, "analyst", "Analyst-password-123")
+    machine = client.application.extensions["machine_client"]
+    fetched_at = "2026-10-18T00:00:00Z"
+    online = {"ok": True, "data": {}, "error": None, "fetched_at": fetched_at}
+    values = {"temperature": 40, "pressure": 2, "power": 6, "rpm": 750}
+    value_key = "rpm" if sensor == "speed" else sensor
+    limits = {
+        "temperature": {"high": 70},
+        "pressure": {"high": 4},
+        "power": {"high": 12},
+        "speed": {"high": 1500},
+    }
+    values[value_key] = ratio * limits[sensor]["high"]
+    machine.responses.update({
+        "state": {
+            **online,
+            "data": {
+                **values,
+                "limits": limits,
+            },
+        },
+        "connection": online,
+        "risk": online,
+        "telemetry": {"ok": True, "data": [], "error": None, "fetched_at": fetched_at},
+    })
+
+    result = client.get("/api/live").get_json()["machine_risk"]
+
+    assert result["risk_level"] == expected_level
+    assert result["risk_score"] == pytest.approx(ratio)
+    assert result["sensor"] == sensor
 
 
 def test_incident_action_updates_status_and_audit(setup_console):

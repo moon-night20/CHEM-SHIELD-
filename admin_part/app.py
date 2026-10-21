@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import ipaddress
 import logging
+import math
 import os
 import secrets
 import sqlite3
@@ -71,6 +72,50 @@ def _parse_timestamp(value: Any) -> datetime | None:
         return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed
     except ValueError:
         return None
+
+
+def _machine_risk_assessment(state: Any) -> dict[str, Any]:
+    if not isinstance(state, dict):
+        return {"risk_level": "UNAVAILABLE", "risk_score": None, "sensor": None}
+
+    ratios = []
+    for sensor, state_key in (
+        ("temperature", "temperature"),
+        ("pressure", "pressure"),
+        ("power", "power"),
+        ("speed", "rpm"),
+    ):
+        limits = state.get("limits")
+        sensor_limits = limits.get(sensor) if isinstance(limits, dict) else None
+        limit = sensor_limits.get("high") if isinstance(sensor_limits, dict) else None
+        value = state.get(state_key)
+        if (
+            isinstance(limit, bool)
+            or not isinstance(limit, (int, float))
+            or limit <= 0
+            or isinstance(value, bool)
+            or not isinstance(value, (int, float))
+        ):
+            continue
+        ratio = float(value) / float(limit)
+        if math.isfinite(ratio) and ratio >= 0:
+            ratios.append((ratio, sensor))
+
+    if not ratios:
+        return {"risk_level": "UNAVAILABLE", "risk_score": None, "sensor": None}
+
+    score, sensor = max(ratios)
+    if score > 1.0:
+        level = "CRITICAL"
+    elif score < 0.75:
+        level = "NORMAL"
+    else:
+        level = "MEDIUM"
+    return {
+        "risk_level": level,
+        "risk_score": round(score, 3),
+        "sensor": sensor,
+    }
 
 
 def _time_windows_overlap(first: dict[str, Any], second: dict[str, Any]) -> bool:
@@ -526,7 +571,11 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
     @app.get("/api/live")
     @role_required(*ALL_ROLES)
     def live_api():
-        return jsonify(app.extensions["machine_client"].live())
+        live = app.extensions["machine_client"].live()
+        state = live.get("state", {})
+        state_data = state.get("data") if isinstance(state, dict) and state.get("ok") else None
+        live["machine_risk"] = _machine_risk_assessment(state_data)
+        return jsonify(live)
 
     @app.get("/machine")
     @role_required(*ALL_ROLES)

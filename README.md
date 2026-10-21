@@ -20,8 +20,14 @@ mitigation.
 > performance. Refreshed reports are generated from actual model predictions.
 
 The Part 1 HMI provides the Part 4 risk API and SQLite persistence; detector
-risk and incident history are presented in the separate Admin console. P2
-network replay and the P5 physical monitor can explicitly publish scored
+risk and incident history are presented in the separate Admin console. The
+Admin dashboard also shows a live machine-reading risk band and a limit-ratio
+score based on the highest configured temperature, pressure, power, or speed
+reading. Readings below 75% of a limit are NORMAL; readings from 75% through the
+limit are MEDIUM; exceeding any configured limit is CRITICAL. Current upper
+limits are 70 °C, 4 bar, 12 kW, and 1500 RPM. This operational indicator is
+separate from the Part 4 detector score and is not a probability.
+P2 network replay and the P5 physical monitor can explicitly publish scored
 events to the HMI's loopback `POST /api/risk/events` endpoint. No background
 capture or automated response is enabled.
 
@@ -124,10 +130,11 @@ database; it does not automatically create risk incidents or start/stop the
 motor. Use the **Attack Console** link in the Admin navigation or **Open Attack
 Console** on the Incidents page.
 
-Configured upper warning limits remain **80 °C**, **5 bar**, and **3000 RPM**;
-input bounds do not change those monitoring thresholds. Power has no configured
-upper warning limit. These are simulated sensor-value overrides only and do
-not operate physical equipment.
+The normal virtual machine is capped at **70 °C**, **4 bar**, **12 kW**, and
+**1500 RPM**. The Attack Console accepts values above these operating limits;
+such explicit overrides appear as critical warnings. Input bounds do not
+change those monitoring thresholds. These are simulated sensor-value
+overrides only and do not operate physical equipment.
 
 Run the focused tests with:
 
@@ -232,10 +239,11 @@ Part 1 operator HMI :15000 ---- Modbus TCP ---- Part 1 virtual PLC :15020
   operator must explicitly confirm it; no detector, rule, risk score, or admin
   page automatically stops the machine. It is not a physical safety function.
 
-The HMI's machine-condition badge uses separate demo limits (temperature
-above 80 °C, pressure above 5 bar, or speed above 3000 RPM). It reports
-NORMAL/CRITICAL as a status only and does not cause a stop. This badge is not
-the Part 4 detector-based incident-risk score.
+The HMI's machine-condition badge uses the configured upper limits (temperature
+70 °C, pressure 4 bar, power 12 kW, and speed 1500 RPM). Exceeding any one
+reports CRITICAL; otherwise it reports NORMAL. This is a status only and does
+not cause a stop. It is separate from the Part 4 detector-based incident-risk
+score.
 
 ## Run the optional detection demos
 

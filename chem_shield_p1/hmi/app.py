@@ -37,6 +37,7 @@ def _machine_limit_alerts(state, limits):
     for sensor, state_key, unit in (
         ("temperature", "temperature", "degC"),
         ("pressure", "pressure", "bar"),
+        ("power", "power", "kW"),
         ("speed", "rpm", "rpm"),
     ):
         threshold = limits.get(sensor, {}).get("high")
@@ -47,6 +48,7 @@ def _machine_limit_alerts(state, limits):
                 "value": value,
                 "threshold": threshold,
                 "unit": unit,
+                "severity": "critical",
                 "message": f"{sensor} {value:g} {unit} exceeds the {threshold:g} {unit} upper limit",
             })
     return alerts
@@ -138,6 +140,10 @@ def create_app(
                 **current,
                 "machine_condition": "CRITICAL" if alerts else "NORMAL",
                 "limit_alerts": alerts,
+                "limits": {
+                    name: {"high": machine_limits.get(name, {}).get("high")}
+                    for name in ("temperature", "pressure", "power", "speed")
+                },
             })
         except (ConnectionError, RuntimeError) as error:
             return jsonify({"error": str(error)}), 503

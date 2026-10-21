@@ -36,8 +36,11 @@ class RuleEngine:
         for sensor, event_prefix in (
             ("temperature", "temperature"),
             ("pressure", "pressure"),
+            ("power", "power"),
             ("speed", "speed"),
         ):
+            if sensor not in values:
+                continue
             value = values[sensor]
             sensor_limits = limits.get(sensor, {})
             upper = sensor_limits.get("high")

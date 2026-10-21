@@ -52,7 +52,7 @@ class SensorValidator:
     """Validate configured sensor fields without coercing bad values to normal data."""
 
     REQUIRED_SENSORS = ("temperature", "pressure", "speed")
-    OPTIONAL_SENSORS = ("vibration",)
+    OPTIONAL_SENSORS = ("vibration", "power")
 
     def __init__(
         self,
@@ -73,6 +73,7 @@ class SensorValidator:
         self.units = {
             "temperature": "degC",
             "pressure": "bar",
+            "power": "kW",
             "speed": "rpm",
             "vibration": "g",
             **(units or {}),

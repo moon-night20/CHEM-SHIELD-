@@ -743,6 +743,63 @@ textarea {
   display: block;
 }
 
+.machine-risk-summary {
+  display: grid;
+  grid-template-columns: minmax(150px, .8fr) minmax(130px, .6fr) minmax(240px, 2fr);
+  align-items: center;
+  gap: 16px;
+  margin: 12px 0 16px;
+  padding: 13px 14px;
+  border: 1px solid #26374d;
+  border-radius: 8px;
+  background: #0b1320;
+}
+
+.machine-risk-summary > div {
+  display: grid;
+  gap: 5px;
+}
+
+.machine-risk-summary > div > span,
+.machine-risk-summary p {
+  margin: 0;
+  color: #a9bacd;
+  font-size: .82rem;
+}
+
+.machine-risk-summary .eyebrow {
+  color: #6ecbff;
+  font-size: .72rem;
+}
+
+.machine-risk-badge {
+  width: fit-content;
+  padding: 4px 9px;
+  border: 1px solid #3b506b;
+  border-radius: 999px;
+  color: #a9bacd;
+  font-size: .84rem;
+}
+
+.machine-risk-badge.normal {
+  border-color: #327354;
+  background: #15392c;
+  color: #a9f3ce;
+}
+
+.machine-risk-badge.medium {
+  border-color: #8f7330;
+  background: #332b1d;
+  color: #ffe79b;
+}
+
+.machine-risk-badge.high,
+.machine-risk-badge.critical {
+  border-color: #8f3947;
+  background: #351c24;
+  color: #ffc7cf;
+}
+
 .live-readings span {
   color: #a9bacd;
   font-size: .72rem;
@@ -831,6 +888,14 @@ textarea {
   }
 
   .live-risk-summary > p {
+    grid-column: 1 / -1;
+  }
+
+  .machine-risk-summary {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .machine-risk-summary > p {
     grid-column: 1 / -1;
   }
 }

@@ -12,11 +12,27 @@
   <p class="live-banner offline" data-live-banner role="status">OFFLINE - waiting for machine HMI data.</p>
   <div class="live-readings">
     <div><span>Motor</span><strong data-reading="motor_status">--</strong></div>
-    <div><span>Risk</span><strong data-reading="risk_level">--</strong></div>
+    <div><span>Detector risk</span><strong data-reading="risk_level">--</strong></div>
     <div><span>RPM</span><strong data-reading="rpm">--</strong></div>
     <div><span>Temperature</span><strong data-reading="temperature">--</strong></div>
     <div><span>Pressure</span><strong data-reading="pressure">--</strong></div>
     <div><span>Power</span><strong data-reading="power">--</strong></div>
+  </div>
+  <div class="machine-risk-summary" aria-label="Live machine risk assessment">
+    <div>
+      <span class="eyebrow">MACHINE READING RISK</span>
+      <strong class="machine-risk-badge unavailable" data-machine-risk-level>WAITING</strong>
+    </div>
+    <div><span>Limit ratio score</span><strong data-machine-risk-score>--</strong></div>
+    <p data-machine-risk-detail>Uses the highest current temperature, pressure, or speed ratio against its configured upper limit.</p>
+  </div>
+  <div class="machine-risk-summary" aria-label="Live machine risk assessment">
+    <div>
+      <span class="eyebrow">MACHINE READING RISK</span>
+      <strong class="machine-risk-badge unavailable" data-machine-risk-level>WAITING</strong>
+    </div>
+    <div><span>Limit ratio score</span><strong data-machine-risk-score>--</strong></div>
+    <p data-machine-risk-detail>Uses the highest current temperature, pressure, or speed ratio against its configured upper limit.</p>
   </div>
   <div class="trend-wrap">
     <div class="trend-title">

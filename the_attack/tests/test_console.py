@@ -89,6 +89,7 @@ def test_console_page_and_dashboard_load(console):
     assert b"Set a machine value" in response.data
     assert b"Latest telemetry" not in response.data
     assert b"Command history" not in response.data
+    assert b'"power": 12.0' in response.data
     dashboard = client.get("/api/dashboard")
     assert dashboard.status_code == 200
     assert dashboard.get_json()["simulation_only"] is True
@@ -133,10 +134,10 @@ def test_direct_value_overrides_are_applied_to_simulator_state():
 @pytest.mark.parametrize(
     ("parameter", "value", "bit", "register", "scale", "telemetry_key"),
     [
-        ("temperature", 70.0, OVERRIDE_TEMPERATURE, SIM_TEMPERATURE, 100, "temperature"),
-        ("power", 8.5, OVERRIDE_POWER, SIM_POWER, 100, "power"),
-        ("pressure", 2.5, OVERRIDE_PRESSURE, SIM_PRESSURE, 100, "pressure"),
-        ("speed", 1200, OVERRIDE_SPEED, SIM_SPEED, 1, "rpm"),
+        ("temperature", 75.0, OVERRIDE_TEMPERATURE, SIM_TEMPERATURE, 100, "temperature"),
+        ("power", 13.0, OVERRIDE_POWER, SIM_POWER, 100, "power"),
+        ("pressure", 4.5, OVERRIDE_PRESSURE, SIM_PRESSURE, 100, "pressure"),
+        ("speed", 1600, OVERRIDE_SPEED, SIM_SPEED, 1, "rpm"),
     ],
 )
 def test_all_machine_values_are_set_and_observed(
@@ -164,6 +165,8 @@ def test_all_machine_values_are_set_and_observed(
     history = client.get("/api/commands").get_json()["commands"]
     assert history[0]["status"] == "observed"
     assert history[0]["observed_value"] == value
+    assert history[0]["exceeded_limit"] == 1
+    assert "exceeds the configured upper limit" in history[0]["warning"]
 
 
 def test_clear_overrides_resumes_process_values_and_records_event(console):

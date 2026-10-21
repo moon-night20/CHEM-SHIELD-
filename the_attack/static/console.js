@@ -4,6 +4,7 @@ const parameter = document.getElementById("parameter");
 const valueInput = document.getElementById("value");
 const resultBox = document.getElementById("form-result");
 const submitButton = document.getElementById("submit-button");
+const criticalLimits = JSON.parse(document.querySelector('meta[name="critical-limits"]').content);
 const controls = {
   temperature: { unit: "°C", min: 0, max: 120 },
   power: { unit: "kW", min: 0, max: 20 },
@@ -18,8 +19,12 @@ function updateInput() {
   valueInput.max = control.max;
   valueInput.step = control.integer ? "1" : "any";
   valueInput.placeholder = `${control.min} to ${control.max}`;
+  const limit = criticalLimits[parameter.value];
+  const limitNote = limit == null
+    ? "No critical threshold is configured."
+    : `Above ${limit} ${control.unit} is CRITICAL.`;
   document.getElementById("range-note").textContent =
-    `Allowed range: ${control.min}–${control.max} ${control.unit}.`;
+    `Allowed: ${control.min}–${control.max} ${control.unit}. ${limitNote}`;
 }
 
 function showResult(message, isError = false) {

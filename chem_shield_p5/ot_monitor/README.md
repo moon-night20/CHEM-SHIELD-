@@ -26,9 +26,10 @@ HMI; monitor logic and its tests live here.
 - `config.example.json` maps the monitor's local machine IDs to the shared
   Part 4 correlation asset `PLC-01` through `risk_asset_id`.
 
-The physical field mapping is `temperature` (degC), `pressure` (bar), `speed`
-from Part 1's `rpm` (rpm), `operating_state` from `motor_status`, and `asset_id`
-from `machine_id`. Part 1 simulator readings are fictional simulated values.
+The physical field mapping is `temperature` (degC), `pressure` (bar), `power`
+(kW), `speed` from Part 1's `rpm` (rpm), `operating_state` from `motor_status`,
+and `asset_id` from `machine_id`. Part 1 simulator readings are fictional
+simulated values.
 
 ## Data flow
 
@@ -104,12 +105,12 @@ CSV data is synthetic and does not establish real-world accuracy.
 
 `config.example.json` sets default sensor names, units, and the risk asset
 mapping. For this fictional simulator only, it also sets upper alert limits of
-80 °C temperature, 5 bar pressure, and 3000 rpm speed. Values at or below each
-limit do not trigger that upper-limit rule; values above it create a high
-severity OT event. These are demo thresholds, not validated equipment safety
-limits. The lower limits and plausibility ranges remain unset. Rule alerts are
-deterministic engineering/state checks and remain independent of statistical
-model scores.
+70 °C temperature, 4 bar pressure, 12 kW power, and 1500 rpm speed. Values at
+or below each limit do not trigger that upper-limit rule; values above it
+create a critical severity OT event. These are demo thresholds, not validated
+equipment safety limits. The lower limits and plausibility ranges remain
+unset. Rule alerts are deterministic engineering/state checks and remain
+independent of statistical model scores.
 
 These events are alert-only: they do not stop the simulator. Part 6 can offer
 its separate simulated stop only after an operator explicitly confirms an

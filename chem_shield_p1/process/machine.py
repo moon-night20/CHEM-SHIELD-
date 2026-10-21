@@ -5,6 +5,16 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 
+MAX_SIMULATED_TEMPERATURE_C = 70.0
+MAX_SIMULATED_PRESSURE_BAR = 4.0
+MAX_SIMULATED_POWER_KW = 12.0
+MAX_SIMULATED_SPEED_RPM = 1500.0
+NORMAL_TEMPERATURE_CEILING = MAX_SIMULATED_TEMPERATURE_C - 0.01
+NORMAL_PRESSURE_CEILING = MAX_SIMULATED_PRESSURE_BAR - 0.01
+NORMAL_POWER_CEILING = MAX_SIMULATED_POWER_KW - 0.01
+NORMAL_SPEED_CEILING = MAX_SIMULATED_SPEED_RPM - 1.0
+NORMAL_SPEED_SETPOINT_RATIO = 0.99
+
 
 @dataclass
 class MachineState:
@@ -25,22 +35,37 @@ class ProcessUnit:
 
     def step(self, motor_on: bool, target_rpm: float, dt: float = 0.5) -> MachineState:
         """Advance the fictional process by one time interval."""
-        target_rpm = max(0.0, min(float(target_rpm), 3000.0)) if motor_on else 0.0
+        target_rpm = max(
+            0.0,
+            min(float(target_rpm), NORMAL_SPEED_CEILING * NORMAL_SPEED_SETPOINT_RATIO),
+        ) if motor_on else 0.0
         response = min(1.0, dt / 4.0)
         self.state.rpm += (target_rpm - self.state.rpm) * response
 
         load = self.state.rpm / 1500.0
-        target_temperature = 20.0 + 42.0 * min(load, 1.5)
-        target_pressure = 1.0 + 3.2 * min(load, 1.5)
-        target_power = 0.2 + 12.0 * min(load, 1.5)
+        target_temperature = 20.0 + 48.0 * min(load, 1.5)
+        target_pressure = 1.0 + 2.95 * min(load, 1.5)
+        target_power = 0.2 + 11.6 * min(load, 1.5)
         thermal_response = min(1.0, dt / 18.0)
         self.state.temperature += (target_temperature - self.state.temperature) * thermal_response
         self.state.pressure += (target_pressure - self.state.pressure) * min(1.0, dt / 5.0)
         self.state.power += (target_power - self.state.power) * min(1.0, dt / 3.0)
         self.state.motor_status = "RUNNING" if motor_on and self.state.rpm > 1 else "STOPPED"
 
-        self.state.rpm = max(0.0, self.state.rpm + self._random.gauss(0, 1.5))
-        self.state.temperature = max(20.0, self.state.temperature + self._random.gauss(0, 0.08))
-        self.state.pressure = max(0.0, self.state.pressure + self._random.gauss(0, 0.015))
-        self.state.power = max(0.0, self.state.power + self._random.gauss(0, 0.05))
+        self.state.rpm = min(
+            NORMAL_SPEED_CEILING,
+            max(0.0, self.state.rpm + self._random.gauss(0, 4.0)),
+        )
+        self.state.temperature = min(
+            NORMAL_TEMPERATURE_CEILING,
+            max(20.0, self.state.temperature + self._random.gauss(0, 0.25)),
+        )
+        self.state.pressure = min(
+            NORMAL_PRESSURE_CEILING,
+            max(0.0, self.state.pressure + self._random.gauss(0, 0.02)),
+        )
+        self.state.power = min(
+            NORMAL_POWER_CEILING,
+            max(0.0, self.state.power + self._random.gauss(0, 0.25)),
+        )
         return self.state

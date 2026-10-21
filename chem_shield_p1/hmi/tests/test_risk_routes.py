@@ -88,7 +88,7 @@ class RiskRouteTests(unittest.TestCase):
         self.assertIn("error", response.get_json())
 
     def test_live_machine_condition_is_critical_only_above_any_configured_limit(self):
-        registers = [1, 1500, 1000, 7999, 499, 500, 0, 0]
+        registers = [1, 1500, 1000, 6999, 399, 1199, 0, 0]
 
         class FakeClient:
             def read_holding_registers(self, address, count, slave):
@@ -113,25 +113,34 @@ class RiskRouteTests(unittest.TestCase):
             client = app.test_client()
 
             for sensor, value, event_sensor in (
-                ("temperature", 8000, "temperature"),
-                ("pressure", 500, "pressure"),
-                ("rpm", 3000, "speed"),
+                ("temperature", 7000, "temperature"),
+                ("pressure", 400, "pressure"),
+                ("power", 1200, "power"),
+                ("rpm", 1500, "speed"),
             ):
                 with self.subTest(sensor=sensor):
                     if sensor == "temperature":
                         registers[3] = value
                     elif sensor == "pressure":
                         registers[4] = value
+                    elif sensor == "power":
+                        registers[5] = value
                     else:
                         registers[2] = value
                     at_limit = client.get("/api/state").get_json()
                     self.assertEqual(at_limit["machine_condition"], "NORMAL")
                     self.assertEqual(at_limit["limit_alerts"], [])
+                    self.assertEqual(at_limit["limits"]["temperature"]["high"], 70)
+                    self.assertEqual(at_limit["limits"]["pressure"]["high"], 4)
+                    self.assertEqual(at_limit["limits"]["power"]["high"], 12)
+                    self.assertEqual(at_limit["limits"]["speed"]["high"], 1500)
 
                     if sensor == "temperature":
                         registers[3] += 1
                     elif sensor == "pressure":
                         registers[4] += 1
+                    elif sensor == "power":
+                        registers[5] += 1
                     else:
                         registers[2] += 1
                     above_limit = client.get("/api/state").get_json()
@@ -146,6 +155,8 @@ class RiskRouteTests(unittest.TestCase):
                         registers[3] -= 2
                     elif sensor == "pressure":
                         registers[4] -= 2
+                    elif sensor == "power":
+                        registers[5] -= 2
                     else:
                         registers[2] -= 2
                     normal_again = client.get("/api/state").get_json()

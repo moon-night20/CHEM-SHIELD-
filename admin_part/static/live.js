@@ -106,6 +106,24 @@
     });
   };
 
+  const updateMachineRisk = (panel, risk) => {
+    const level = risk?.risk_level || "UNAVAILABLE";
+    const badge = panel.querySelector("[data-machine-risk-level]");
+    const score = panel.querySelector("[data-machine-risk-score]");
+    const detail = panel.querySelector("[data-machine-risk-detail]");
+    const levelClass = ["NORMAL", "MEDIUM", "HIGH", "CRITICAL"].includes(level)
+      ? level.toLowerCase()
+      : "unavailable";
+    badge.textContent = level;
+    badge.className = `machine-risk-badge ${levelClass}`;
+    score.textContent = risk?.risk_score == null ? "--" : `${Number(risk.risk_score).toFixed(3)}×`;
+    if (risk?.sensor) {
+      detail.textContent = `Highest normalized reading: ${risk.sensor}. NORMAL < 0.75×; MEDIUM 0.75–1.00×; CRITICAL above 1.00× (over the limit).`;
+    } else {
+      detail.textContent = "Machine risk is unavailable until live readings and configured limits are available.";
+    }
+  };
+
   const refresh = async () => {
     if (requestPending) return;
     requestPending = true;
@@ -117,6 +135,7 @@
       if (!response.ok) throw new Error(`Live feed returned HTTP ${response.status}`);
       const live = await response.json();
       riskPanels.forEach((panel) => updateLiveRisk(panel, live.risk));
+      panels.forEach((panel) => updateMachineRisk(panel, live.machine_risk));
       const fetchedAt = Date.parse(live.fetched_at || "");
       if (!live.ok || !live.state?.ok) {
         panels.forEach((panel) => status(

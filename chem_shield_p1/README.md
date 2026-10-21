@@ -67,10 +67,15 @@ register are shown in the authenticated Admin console.
 The operator console shows the PLC connection state, actual and target RPM,
 temperature, pressure, power, operator command history, and the latest machine
 events. Commands and test events are disabled while the PLC is offline.
-Its live process-condition badge reads CRITICAL only while temperature is above
-80 °C, pressure is above 5 bar, or speed is above 3000 rpm; at or below all
-upper limits it reads NORMAL. This is an alert-only simulation status and does
-not stop the machine. The separate Part 4 incident-risk score is unchanged.
+Its live process-condition badge reads CRITICAL when temperature exceeds
+70 °C, pressure exceeds 4 bar, power exceeds 12 kW, or speed exceeds 1500 rpm.
+At or below all upper limits it reads NORMAL. This is an alert-only simulation
+status and does not stop the machine. The separate Part 4 incident-risk score
+is unchanged. The normal process model targets fluctuating readings below the
+upper operating limits rather than holding at them, and event stimuli remain
+capped at 70 °C, 4 bar, 12 kW, and 1500 rpm. An explicit value submitted from
+the Attack Console can set a higher simulated value until that override is
+cleared.
 
 ## Register map
 

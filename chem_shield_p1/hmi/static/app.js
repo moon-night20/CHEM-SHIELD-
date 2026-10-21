@@ -11,7 +11,7 @@ let riskRefreshPending = false;
 const p6ConfirmToken = document.querySelector('meta[name="p6-confirm-token"]').content;
 
 const focusConfig = {
-  temperature: {label: 'TEMPERATURE', unit: '°C', value: (state) => state.temperature, target: () => '80.0 °C'},
+  temperature: {label: 'TEMPERATURE', unit: '°C', value: (state) => state.temperature, target: () => '70.0 °C'},
   speed: {label: 'SPEED', unit: 'RPM', value: (state) => state.rpm, target: (state) => `${Math.round(state.target_rpm)} RPM`},
   pressure: {label: 'PRESSURE', unit: 'bar', value: (state) => state.pressure, target: () => '4.00 bar'},
   power: {label: 'POWER', unit: 'kW', value: (state) => state.power, target: () => '12.00 kW'},

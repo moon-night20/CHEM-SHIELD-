@@ -68,15 +68,17 @@ class Part5IntegrationTests(unittest.TestCase):
     def test_default_upper_limits_alert_only_above_the_configured_value(self):
         config = make_config()
         cases = (
-            ("temperature", 80, "temperature_high"),
-            ("pressure", 5, "pressure_high"),
-            ("speed", 3000, "speed_high"),
+            ("temperature", 70, "temperature_high"),
+            ("pressure", 4, "pressure_high"),
+            ("power", 12, "power_high"),
+            ("speed", 1500, "speed_high"),
         )
         normal_reading = {
             "timestamp": "2026-10-14T09:30:00Z",
             "asset_id": "M-01",
             "temperature": 25,
             "pressure": 2,
+            "power": 6,
             "speed": 500,
             "operating_state": "RUNNING",
             "measurement_origin": "synthetic_test",
@@ -90,7 +92,7 @@ class Part5IntegrationTests(unittest.TestCase):
                 above_limit = dict(normal_reading, **{sensor: limit + 1})
                 events = OTMonitor(config).process([above_limit])
                 self.assertEqual([event["event_type"] for event in events], [expected_event])
-                self.assertEqual(events[0]["severity"], "high")
+                self.assertEqual(events[0]["severity"], "critical")
                 self.assertEqual(
                     events[0]["evidence"]["configured_threshold"],
                     limit,

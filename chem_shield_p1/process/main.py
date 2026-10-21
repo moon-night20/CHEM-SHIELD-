@@ -24,7 +24,13 @@ from chem_shield_p1.plc.register_map import (
     SIM_SPEED,
     SIM_TEMPERATURE,
 )
-from .machine import ProcessUnit
+from .machine import (
+    NORMAL_POWER_CEILING,
+    NORMAL_PRESSURE_CEILING,
+    NORMAL_SPEED_CEILING,
+    NORMAL_TEMPERATURE_CEILING,
+    ProcessUnit,
+)
 
 
 def read_registers(client) -> list[int]:
@@ -53,6 +59,19 @@ def apply_simulation_overrides(state, registers: list[int]) -> None:
         state.rpm = float(registers[SIM_SPEED])
 
 
+def cap_uncommanded_values(state, registers: list[int]) -> None:
+    """Keep normal process changes within operating limits unless overridden."""
+    mask = registers[SIM_OVERRIDE_MASK]
+    if not mask & OVERRIDE_TEMPERATURE:
+        state.temperature = min(NORMAL_TEMPERATURE_CEILING, max(20.0, state.temperature))
+    if not mask & OVERRIDE_PRESSURE:
+        state.pressure = min(NORMAL_PRESSURE_CEILING, max(0.0, state.pressure))
+    if not mask & OVERRIDE_POWER:
+        state.power = min(NORMAL_POWER_CEILING, max(0.0, state.power))
+    if not mask & OVERRIDE_SPEED:
+        state.rpm = min(NORMAL_SPEED_CEILING, max(0.0, state.rpm))
+
+
 def run(host: str, port: int, interval: float, database: str) -> None:
     client = ModbusTcpClient(host, port=port)
     unit = ProcessUnit()
@@ -77,6 +96,7 @@ def run(host: str, port: int, interval: float, database: str) -> None:
             elif not paused and event_code == 4:
                 unit.state.rpm += 250
 
+            cap_uncommanded_values(unit.state, registers)
             apply_simulation_overrides(unit.state, registers)
 
             values = list(registers[:8])

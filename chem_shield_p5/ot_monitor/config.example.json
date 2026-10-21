@@ -3,12 +3,14 @@
   "sensor_names": {
     "temperature": "temperature",
     "pressure": "pressure",
+    "power": "power",
     "speed": "speed",
     "vibration": "vibration"
   },
   "units": {
     "temperature": "degC",
     "pressure": "bar",
+    "power": "kW",
     "speed": "rpm",
     "vibration": "g"
   },
@@ -28,9 +30,10 @@
   "model_anomaly_severity": "medium",
   "rules": {
     "limits": {
-      "temperature": {"low": null, "high": 80, "low_severity": "high", "high_severity": "high"},
-      "pressure": {"low": null, "high": 5, "low_severity": "high", "high_severity": "high"},
-      "speed": {"low": null, "high": 3000, "low_severity": "high", "high_severity": "high"}
+      "temperature": {"low": null, "high": 70, "low_severity": "high", "high_severity": "critical"},
+      "pressure": {"low": null, "high": 4, "low_severity": "high", "high_severity": "critical"},
+      "power": {"low": null, "high": 12, "low_severity": "high", "high_severity": "critical"},
+      "speed": {"low": null, "high": 1500, "low_severity": "high", "high_severity": "critical"}
     },
     "rate_of_change": {
       "temperature": null,
