@@ -8,6 +8,8 @@ import logging
 import os
 import secrets
 import sqlite3
+import threading
+import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -99,6 +101,7 @@ def create_app(
         )
     app.config["INGEST_TOKEN"] = ingest_token
     app.config["P6_CONFIRM_TOKEN"] = secrets.token_urlsafe(32)
+    app.config["P6_AUTO_STOP_DELAY_SECONDS"] = 15
     app.config["OT_LIMITS_FILE"] = DEFAULT_OT_CONFIG
     ot_config = json.loads(
         Path(app.config["OT_LIMITS_FILE"]).read_text(encoding="utf-8")
@@ -111,6 +114,11 @@ def create_app(
     )
     paused = False
     device = DeviceConnection(plc_host, plc_port)
+    p6_stop_lock = threading.Lock()
+    p6_stop_timers = {}
+    p6_stop_deadlines = {}
+    p6_stopped_incidents = set()
+    app.extensions["p6_stop_timers"] = p6_stop_timers
     try:
         device.connect()
     except ConnectionError:
@@ -118,6 +126,110 @@ def create_app(
 
     def plc_call(action):
         return device.call(action)
+
+    def execute_p6_stop(incident_id):
+        nonlocal paused
+        with p6_stop_lock:
+            if incident_id in p6_stopped_incidents:
+                return
+            try:
+                plc_ip = ipaddress.ip_address(device.host)
+            except ValueError as error:
+                raise ValueError(
+                    "Part 6 is limited to loopback simulation only."
+                ) from error
+            if not plc_ip.is_loopback:
+                raise ValueError("Part 6 is limited to loopback simulation only.")
+
+            incident = incident_store.get_incident(incident_id)
+            if incident is None:
+                raise ValueError("Incident not found.")
+            decision = response_decision(incident)
+            if not decision["requires_operator_confirmation"]:
+                raise ValueError("A simulated stop is available only for active CRITICAL incidents.")
+
+            current = plc_call(read_state)
+            registers_result = plc_call(
+                lambda client: client.write_registers(
+                    0, [0, current["target_rpm"]], slave=1
+                )
+            )
+            if registers_result.isError():
+                raise RuntimeError(f"Simulator rejected the Part 6 stop: {registers_result}")
+            override_result = plc_call(
+                lambda client: client.write_register(8, 0, slave=1)
+            )
+            if override_result.isError():
+                raise RuntimeError(
+                    f"Simulator rejected the Part 6 override reset: {override_result}"
+                )
+            event_result = plc_call(lambda client: client.write_register(6, 0, slave=1))
+            if event_result.isError():
+                raise RuntimeError(f"Simulator rejected the Part 6 reset: {event_result}")
+            store.add_event({
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "source": "P6",
+                "machine_id": "M-01",
+                "event_type": "P6_SIMULATED_STOP",
+                "parameter": f"motor_status ({incident_id})",
+                "old_value": current["motor_status"],
+                "new_value": "STOPPED",
+                "severity": "critical",
+            })
+            p6_stopped_incidents.add(incident_id)
+            p6_stop_deadlines.pop(incident_id, None)
+            paused = False
+            timer = p6_stop_timers.pop(incident_id, None)
+            if timer:
+                timer.cancel()
+
+    def auto_stop_after_countdown(incident_id):
+        with p6_stop_lock:
+            p6_stop_timers.pop(incident_id, None)
+        try:
+            execute_p6_stop(incident_id)
+            app.logger.warning(
+                "Part 6 countdown elapsed; simulated stop applied to incident %s",
+                incident_id,
+            )
+        except (ConnectionError, RuntimeError, ValueError, sqlite3.Error) as error:
+            app.logger.error(
+                "Part 6 automatic simulated stop failed for incident %s: %s",
+                incident_id,
+                error,
+            )
+
+    def arm_p6_auto_stop(incident_id):
+        with p6_stop_lock:
+            existing = p6_stop_timers.get(incident_id)
+            if existing and existing.is_alive():
+                return
+            if (
+                incident_id in p6_stopped_incidents
+                or incident_id in p6_stop_deadlines
+            ):
+                return
+            try:
+                plc_ip = ipaddress.ip_address(device.host)
+            except ValueError:
+                return
+            if not plc_ip.is_loopback:
+                return
+            delay = app.config["P6_AUTO_STOP_DELAY_SECONDS"]
+            p6_stop_deadlines[incident_id] = time.monotonic() + delay
+            timer = threading.Timer(
+                delay,
+                auto_stop_after_countdown,
+                args=(incident_id,),
+            )
+            timer.daemon = True
+            p6_stop_timers[incident_id] = timer
+            timer.start()
+
+    def p6_countdown_remaining(incident_id):
+        with p6_stop_lock:
+            deadline = p6_stop_deadlines.get(incident_id)
+            return None if deadline is None else max(0.0, deadline - time.monotonic())
 
     def read_state(client):
         result = client.read_holding_registers(0, count=8, slave=1)
@@ -194,6 +306,12 @@ def create_app(
             incoming = payload
         try:
             result = risk_pipeline.ingest(incoming)
+            for incident in result["incidents"]:
+                if (
+                    incident.get("status") == "ACTIVE"
+                    and incident.get("risk_level") == "CRITICAL"
+                ):
+                    arm_p6_auto_stop(incident["incident_id"])
             status_code = 400 if result["rejected"] and not result["accepted"] else 200
             return jsonify(result), status_code
         except (ValueError, sqlite3.Error) as error:
@@ -223,11 +341,29 @@ def create_app(
                     if datetime.now(timezone.utc) - last_time > timedelta(seconds=60)
                     else "ACTIVE"
                 )
+            incidents_with_response = []
+            for incident in active:
+                enriched = _with_warning_details(incident)
+                if incident.get("risk_level") == "CRITICAL":
+                    with p6_stop_lock:
+                        is_stopped = incident["incident_id"] in p6_stopped_incidents
+                    if not is_stopped:
+                        arm_p6_auto_stop(incident["incident_id"])
+                    remaining = p6_countdown_remaining(incident["incident_id"])
+                    enriched["p6_auto_stop_status"] = (
+                        "stopped"
+                        if is_stopped
+                        else "countdown"
+                        if remaining is not None
+                        else "unavailable"
+                    )
+                    enriched["p6_auto_stop_remaining_seconds"] = remaining
+                incidents_with_response.append(enriched)
             return jsonify({
                 "risk_level": highest["risk_level"] if highest else "UNASSESSED",
                 "risk_score": highest["risk_score"] if highest else None,
                 "incident": _with_warning_details(highest) if highest else None,
-                "active_incidents": [_with_warning_details(item) for item in active],
+                "active_incidents": incidents_with_response,
                 "recent_incidents": [
                     _with_warning_details(item)
                     for item in incident_store.list_incidents(limit=20)
@@ -273,13 +409,44 @@ def create_app(
     def acknowledge_incident(incident_id):
         payload = request.get_json(silent=True) or {}
         acknowledged_by = payload.get("acknowledged_by", "operator")
+        arm_p6_followup = payload.get("p6_followup", False)
         if not isinstance(acknowledged_by, str) or not acknowledged_by.strip():
             return jsonify({"error": "acknowledged_by must be a non-empty string."}), 400
+        if not isinstance(arm_p6_followup, bool):
+            return jsonify({"error": "p6_followup must be a boolean."}), 400
+        if arm_p6_followup:
+            supplied_token = request.headers.get("X-Chem-Shield-P6-Confirmation", "")
+            if not hmac.compare_digest(supplied_token, app.config["P6_CONFIRM_TOKEN"]):
+                return jsonify({"error": "Part 6 confirmation token is missing or invalid."}), 403
+            try:
+                caller_ip = ipaddress.ip_address(request.remote_addr or "")
+                plc_ip = ipaddress.ip_address(device.host)
+            except ValueError:
+                return jsonify({"error": "Part 6 is limited to loopback simulation only."}), 403
+            if not caller_ip.is_loopback or not plc_ip.is_loopback:
+                return jsonify({"error": "Part 6 is limited to loopback simulation only."}), 403
         try:
             incident = incident_store.acknowledge(incident_id, acknowledged_by.strip())
             if incident is None:
                 return jsonify({"error": "Active incident not found."}), 404
-            return jsonify(_with_warning_details(incident))
+            response = _with_warning_details(incident)
+            if arm_p6_followup:
+                decision = response_decision(incident)
+                if decision["requires_operator_confirmation"]:
+                    arm_p6_auto_stop(incident_id)
+                    remaining = p6_countdown_remaining(incident_id)
+                    with p6_stop_lock:
+                        stopped = incident_id in p6_stopped_incidents
+                    response["p6_auto_stop_armed"] = (
+                        remaining is not None or stopped
+                    )
+                    response["p6_auto_stop_status"] = (
+                        "stopped" if stopped else "countdown"
+                    )
+                    response["p6_countdown_seconds"] = remaining or 0.0
+                else:
+                    response["p6_auto_stop_armed"] = False
+            return jsonify(response)
         except sqlite3.Error as error:
             app.logger.exception("Incident acknowledgement failed")
             return jsonify({"error": str(error)}), 503
@@ -322,29 +489,7 @@ def create_app(
                     "error": "A simulated stop is available only for active CRITICAL incidents.",
                     "decision": decision,
                 }), 409
-
-            current = plc_call(read_state)
-            registers_result = plc_call(
-                lambda client: client.write_registers(
-                    0, [0, current["target_rpm"]], slave=1
-                )
-            )
-            if registers_result.isError():
-                raise RuntimeError(f"Simulator rejected the Part 6 stop: {registers_result}")
-            event_result = plc_call(lambda client: client.write_register(6, 0, slave=1))
-            if event_result.isError():
-                raise RuntimeError(f"Simulator rejected the Part 6 reset: {event_result}")
-            paused = False
-            store.add_event({
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "source": "P6",
-                "machine_id": "M-01",
-                "event_type": "P6_SIMULATED_STOP",
-                "parameter": f"motor_status ({incident_id.strip()})",
-                "old_value": current["motor_status"],
-                "new_value": "STOPPED",
-                "severity": "critical",
-            })
+            execute_p6_stop(incident_id.strip())
         except (ConnectionError, RuntimeError, ValueError) as error:
             app.logger.warning("Part 6 simulated stop failed: %s", error)
             return jsonify({"error": str(error)}), 503
@@ -377,6 +522,14 @@ def create_app(
                 paused = False
             motor = 1 if action == "start" else 0 if action in ("pause", "stop") else (1 if current["motor_status"] == "RUNNING" else 0)
             plc_call(lambda client: client.write_registers(0, [motor, target], slave=1))
+            if action == "stop":
+                override_result = plc_call(
+                    lambda client: client.write_register(8, 0, slave=1)
+                )
+                if override_result.isError():
+                    raise RuntimeError(
+                        f"Simulator rejected the override reset: {override_result}"
+                    )
             plc_call(lambda client: client.write_register(6, 5 if action == "pause" else 0, slave=1))
             motor_changed = (motor == 1 and current["motor_status"] != "RUNNING") or (motor == 0 and current["motor_status"] != "STOPPED")
             if action in ("start", "pause", "stop") and motor_changed:

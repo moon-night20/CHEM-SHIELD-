@@ -109,7 +109,25 @@
     }
   }
 
+  let lastAutoState = null;
+  const autoTitles = {
+    COUNTDOWN: ['critical', 'AUTOMATIC STOP PENDING'],
+    RECOVERING: ['critical', 'MACHINE STOPPED AUTOMATICALLY'],
+    WATCHING: ['medium', 'MACHINE RESTARTED AFTER RECOVERY'],
+    LOCKED_OUT: ['critical', 'OPERATOR REQUIRED: MACHINE KEPT STOPPED'],
+  };
+
+  function autoResponse(status) {
+    if (!status || !status.enabled || status.state === lastAutoState) return;
+    const previous = lastAutoState;
+    lastAutoState = status.state;
+    const entry = autoTitles[status.state];
+    if (previous === null && status.state === 'IDLE') return;
+    if (entry) showWarning(entry[0], entry[1], status.message);
+  }
+
   window.ChemShieldP6WarningPopup = Object.freeze({
+    autoResponse,
     machineState,
     eventWarnings,
     riskWarnings,

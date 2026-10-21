@@ -5,9 +5,13 @@ const trendLimit = 60;
 let sequenceCounter = 0;
 let selectedFocus = 'temperature';
 let alertIncidentId = null;
+let alertIncidentIsCritical = false;
 let lastNotifiedIncident = null;
 let refreshPending = false;
 let riskRefreshPending = false;
+let p6CountdownDeadline = null;
+let p6CountdownInterval = null;
+let p6CountdownStage = null;
 const p6ConfirmToken = document.querySelector('meta[name="p6-confirm-token"]').content;
 
 const focusConfig = {
@@ -92,6 +96,17 @@ function setState(state) {
   $('state-label').textContent = state.motor_status;
   $('command-state').textContent = state.motor_status;
   $('state-badge').className = `state-badge ${running ? 'running' : state.motor_status === 'PAUSED' ? 'paused' : 'stopped'}`;
+  if (p6CountdownDeadline !== null
+      && Date.now() >= p6CountdownDeadline
+      && state.motor_status === 'STOPPED') {
+    stopP6Countdown();
+    $('risk-alert-message').textContent =
+      'The HMI confirms the loopback simulator is stopped. It will not restart automatically.';
+    $('risk-alert-sim-stop').disabled = true;
+    $('risk-alert-sim-stop').textContent = 'SIMULATOR STOPPED';
+    $('risk-alert-p6-message').textContent =
+      'The loopback simulator is stopped. No physical device was contacted.';
+  }
   const targetRpm = Math.min(1450, Math.round(state.target_rpm));
   $('target-input').value = targetRpm;
   $('target-range').value = targetRpm;
@@ -144,6 +159,7 @@ function maybeShowRiskAlert(summary) {
   if (key === lastNotifiedIncident || $('risk-alert-dialog').open) return;
   lastNotifiedIncident = key;
   alertIncidentId = incident.incident_id;
+  alertIncidentIsCritical = incident.risk_level === 'CRITICAL';
   $('risk-alert-title').textContent = `${incident.risk_level} RISK INCIDENT`;
   const score = Number(incident.risk_score);
   const scoreText = incident.risk_score == null || !Number.isFinite(score)
@@ -158,12 +174,20 @@ function maybeShowRiskAlert(summary) {
     ? `${warning.asset_id || incident.asset_id} · ${warning.trigger || 'Detector'} · ${warning.comparison || 'Numeric limit unavailable'} · ${warningTime}${warning.message ? ` · ${warning.message}` : ''}`
     : `${incident.asset_id} · Trigger details unavailable · Time ${new Date(incident.start_time).toLocaleString()}`;
   const stopButton = $('risk-alert-sim-stop');
-  stopButton.hidden = incident.risk_level !== 'CRITICAL';
+  stopButton.hidden = true;
   stopButton.disabled = false;
-  stopButton.textContent = 'CONFIRM SIMULATED STOP';
-  $('risk-alert-p6-message').textContent = incident.risk_level === 'CRITICAL'
-    ? 'Part 6 is simulation only. Nothing stops unless you explicitly confirm here; it is available only while the HMI and simulator use loopback.'
-    : 'Part 6 offers a simulated stop only for an active CRITICAL incident.';
+  stopButton.textContent = 'STOP MACHINE NOW';
+  $('risk-alert-ack').hidden = false;
+  $('risk-alert-close').textContent = 'CLOSE';
+  if (alertIncidentIsCritical && incident.p6_auto_stop_status === 'countdown'
+      && incident.p6_auto_stop_remaining_seconds != null) {
+    startP6Countdown(incident.p6_auto_stop_remaining_seconds, 'warning');
+  } else {
+    stopP6Countdown();
+    $('risk-alert-p6-message').textContent = alertIncidentIsCritical
+      ? 'The automatic simulated stop is unavailable. Verify the loopback simulator and use its STOP control.'
+      : 'Part 6 offers a simulated stop only for an active CRITICAL incident.';
+  }
   $('risk-alert-dialog').showModal();
 }
 
@@ -199,18 +223,80 @@ async function refresh() {
 
 async function acknowledgeIncident(incidentId) {
   try {
-    await getJson(`/api/incidents/${encodeURIComponent(incidentId)}/acknowledge`, {
+    const result = await getJson(`/api/incidents/${encodeURIComponent(incidentId)}/acknowledge`, {
       method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({acknowledged_by:'operator'}),
+      headers:{
+        'Content-Type':'application/json',
+        ...(alertIncidentIsCritical
+          ? {'X-Chem-Shield-P6-Confirmation':p6ConfirmToken}
+          : {}),
+      },
+      body:JSON.stringify({
+        acknowledged_by:'operator',
+        ...(alertIncidentIsCritical ? {p6_followup:true} : {}),
+      }),
     });
     if ($('risk-alert-dialog').open && alertIncidentId === incidentId) {
       $('risk-alert-dialog').close();
     }
     await refreshRisk();
+    if (alertIncidentIsCritical && result.p6_auto_stop_armed) {
+      showP6StopPrompt(
+        result.p6_countdown_seconds,
+        result.p6_auto_stop_status === 'stopped',
+      );
+    }
   } catch (error) {
     $('risk-alert-message').textContent = `Acknowledgement failed: ${error.message}`;
   }
+}
+
+function startP6Countdown(countdownSeconds, stage) {
+  const seconds = Math.max(0, Number(countdownSeconds) || 0);
+  p6CountdownDeadline = Date.now() + seconds * 1000;
+  p6CountdownStage = stage;
+  window.clearInterval(p6CountdownInterval);
+  updateP6Countdown();
+  p6CountdownInterval = window.setInterval(updateP6Countdown, 1000);
+}
+
+function stopP6Countdown() {
+  window.clearInterval(p6CountdownInterval);
+  p6CountdownInterval = null;
+  p6CountdownDeadline = null;
+  p6CountdownStage = null;
+}
+
+function updateP6Countdown() {
+  if (p6CountdownDeadline === null) return;
+  const remaining = Math.max(0, Math.ceil((p6CountdownDeadline - Date.now()) / 1000));
+  $('risk-alert-p6-message').textContent = remaining > 0
+    ? p6CountdownStage === 'stop'
+      ? `Automatic simulated stop in ${remaining} second${remaining === 1 ? '' : 's'}. Dismissing this prompt does not cancel the stop.`
+      : `Automatic simulated stop in ${remaining} second${remaining === 1 ? '' : 's'} from the critical warning. Acknowledge to review the stop prompt.`
+    : 'Automatic stop is due. Verify the simulator state; use STOP MACHINE NOW if it is still running.';
+}
+
+function showP6StopPrompt(countdownSeconds, alreadyStopped = false) {
+  $('risk-alert-title').textContent = 'STOP THE MACHINE NOW';
+  $('risk-alert-message').textContent = alreadyStopped
+    ? 'Acknowledgment recorded. The HMI has already stopped the loopback simulator. Verify that the machine state is STOPPED.'
+    : 'Acknowledgment recorded. Stop the simulated machine now, or the HMI will stop it automatically when the countdown ends.';
+  $('risk-alert-ack').hidden = true;
+  $('risk-alert-sim-stop').hidden = false;
+  $('risk-alert-sim-stop').disabled = alreadyStopped;
+  $('risk-alert-sim-stop').textContent = alreadyStopped
+    ? 'SIMULATOR STOPPED'
+    : 'STOP MACHINE NOW';
+  $('risk-alert-close').textContent = 'DISMISS';
+  if (alreadyStopped) {
+    stopP6Countdown();
+    $('risk-alert-p6-message').textContent =
+      'The loopback simulator is stopped. It will not restart automatically.';
+  } else {
+    startP6Countdown(countdownSeconds, 'stop');
+  }
+  $('risk-alert-dialog').showModal();
 }
 
 async function confirmSimulatedStop() {
@@ -230,6 +316,9 @@ async function confirmSimulatedStop() {
       ? 'Simulation only: the local virtual machine recorded the stop. No physical device was contacted.'
       : 'Part 6 response recorded.';
     button.textContent = 'SIMULATED STOP RECORDED';
+    stopP6Countdown();
+    $('risk-alert-p6-message').textContent =
+      'The loopback simulator has been stopped. It will not restart automatically.';
     await refresh();
   } catch (error) {
     $('risk-alert-message').textContent = `Simulated stop was not confirmed: ${error.message}`;
@@ -288,6 +377,11 @@ $('risk-alert-ack').addEventListener('click', () => {
   if (alertIncidentId) void acknowledgeIncident(alertIncidentId);
 });
 $('risk-alert-sim-stop').addEventListener('click', () => void confirmSimulatedStop());
-$('risk-alert-close').addEventListener('click', () => $('risk-alert-dialog').close());
+$('risk-alert-close').addEventListener('click', () => {
+  $('risk-alert-dialog').close();
+  if (!p6CountdownInterval) {
+    $('risk-alert-close').textContent = 'CLOSE';
+  }
+});
 
 setConnection(false); setNetworkStatus({status:'DISCONNECTED', error:'Not connected'}); refresh(); setInterval(refresh, 1000);

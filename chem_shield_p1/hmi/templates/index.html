@@ -47,7 +47,7 @@
     <h2 id="risk-alert-title">HIGH RISK INCIDENT</h2>
     <p id="risk-alert-message"></p>
     <p id="risk-alert-trigger" class="risk-alert-trigger"></p>
-    <p id="risk-alert-p6-message" class="p6-response-note"></p>
+    <p id="risk-alert-p6-message" class="p6-response-note" aria-live="polite"></p>
     <div class="risk-alert-actions"><button id="risk-alert-sim-stop" hidden>CONFIRM SIMULATED STOP</button><button id="risk-alert-ack">ACKNOWLEDGE</button><button id="risk-alert-close">CLOSE</button></div>
   </dialog>
   <script src="{{ url_for('p6_warning.static', filename='warning_popup.js') }}"></script>

@@ -1,6 +1,8 @@
 """Flask API integration tests for correlated incident visibility."""
 
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -23,6 +25,8 @@ class RiskRouteTests(unittest.TestCase):
         self.client.environ_base["HTTP_X_INGEST_TOKEN"] = self.app.config["INGEST_TOKEN"]
 
     def tearDown(self):
+        for timer in self.app.extensions["p6_stop_timers"].values():
+            timer.cancel()
         self.temp_dir.cleanup()
 
     def test_summary_starts_unassessed_not_low(self):
@@ -78,6 +82,52 @@ class RiskRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["target_rpm"], 1450)
         self.assertEqual(registers[1], 1450)
+
+    def test_operator_stop_clears_all_four_simulation_overrides(self):
+        registers = [1, 1200, 900, 6500, 350, 1100, 0, 0, 15, 9000, 800, 1500, 2200]
+        writes = []
+
+        class FakeClient:
+            def read_holding_registers(self, address, count, slave):
+                return SimpleNamespace(
+                    isError=lambda: False,
+                    registers=registers[address:address + count],
+                )
+
+            def write_registers(self, address, values, slave):
+                writes.append(("registers", address, values, slave))
+                registers[address:address + len(values)] = values
+                return SimpleNamespace(isError=lambda: False)
+
+            def write_register(self, address, value, slave):
+                writes.append(("register", address, value, slave))
+                registers[address] = value
+                return SimpleNamespace(isError=lambda: False)
+
+        fake_client = FakeClient()
+        with patch.object(
+            DeviceConnection,
+            "call",
+            autospec=True,
+            side_effect=lambda _device, action: action(fake_client),
+        ):
+            response = self.client.post(
+                "/api/control",
+                json={"action": "stop", "target_rpm": 1200},
+            )
+
+        self.assertEqual(response.status_code, 200, response.get_json())
+        self.assertEqual(registers[0], 0)
+        self.assertEqual(registers[6], 0)
+        self.assertEqual(registers[8], 0)
+        self.assertEqual(
+            writes,
+            [
+                ("registers", 0, [0, 1200], 1),
+                ("register", 8, 0, 1),
+                ("register", 6, 0, 1),
+            ],
+        )
 
     def test_posted_event_is_correlated_persisted_and_acknowledged(self):
         response = self.client.post(
@@ -351,13 +401,99 @@ class RiskRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.get_json())
         self.assertEqual(response.get_json()["motor_status"], "STOPPED")
         self.assertTrue(response.get_json()["simulation_only"])
-        self.assertEqual(plc_call.call_count, 3)
+        self.assertEqual(plc_call.call_count, 4)
         self.assertEqual(writes, [
             ("registers", 0, [0, 1500], 1),
+            ("register", 8, 0, 1),
             ("register", 6, 0, 1),
         ])
         events = self.client.get("/api/events").get_json()
         self.assertEqual(events[0]["event_type"], "P6_SIMULATED_STOP")
+
+    def test_critical_incident_auto_stops_after_countdown_from_warning(self):
+        self.app.config["P6_AUTO_STOP_DELAY_SECONDS"] = 0.6
+        token = self.app.config["P6_CONFIRM_TOKEN"]
+        stopped = threading.Event()
+        writes = []
+
+        class FakeClient:
+            def read_holding_registers(self, address, count, slave):
+                return SimpleNamespace(
+                    isError=lambda: False,
+                    registers=[1, 1500, 100, 6200, 400, 1200, 0, 0],
+                )
+
+            def write_registers(self, address, values, slave):
+                writes.append(("registers", address, values, slave))
+                return SimpleNamespace(isError=lambda: False)
+
+            def write_register(self, address, value, slave):
+                writes.append(("register", address, value, slave))
+                stopped.set()
+                return SimpleNamespace(isError=lambda: False)
+
+        fake_client = FakeClient()
+        with patch.object(
+            DeviceConnection,
+            "call",
+            autospec=True,
+            side_effect=lambda _device, action: action(fake_client),
+        ):
+            incident_id = self._post_critical_incident()
+            time.sleep(0.1)
+            summary = self.client.get("/api/risk").get_json()
+            incident = summary["active_incidents"][0]
+            self.assertEqual(incident["p6_auto_stop_status"], "countdown")
+            self.assertLess(incident["p6_auto_stop_remaining_seconds"], 0.6)
+
+            response = self.client.post(
+                f"/api/incidents/{incident_id}/acknowledge",
+                json={"acknowledged_by": "operator", "p6_followup": True},
+                headers={"X-Chem-Shield-P6-Confirmation": token},
+            )
+            self.assertEqual(response.status_code, 200, response.get_json())
+            self.assertTrue(response.get_json()["p6_auto_stop_armed"])
+            self.assertLess(response.get_json()["p6_countdown_seconds"], 0.6)
+            self.assertTrue(stopped.wait(2), "automatic simulated stop did not run")
+            self.assertEqual(
+                self.client.post(
+                    "/api/p6/respond",
+                    json={"incident_id": incident_id, "confirm_stop": True},
+                    headers={"X-Chem-Shield-P6-Confirmation": token},
+                ).status_code,
+                200,
+            )
+
+        self.assertEqual(writes, [
+            ("registers", 0, [0, 1500], 1),
+            ("register", 8, 0, 1),
+            ("register", 6, 0, 1),
+        ])
+
+    def test_noncritical_incidents_do_not_arm_auto_stop(self):
+        token = self.app.config["P6_CONFIRM_TOKEN"]
+        response = self.client.post(
+            "/api/risk/events",
+            json={
+                "event_id": "p6-high-risk-ack",
+                "timestamp": "2026-10-14T09:40:00Z",
+                "source": "network_model",
+                "asset_id": "PLC-02",
+                "event_type": "network",
+                "severity": "high",
+                "evidence": {},
+                "anomaly_score": 1.0,
+            },
+        )
+        self.assertEqual(response.get_json()["incidents"][0]["risk_level"], "MEDIUM")
+        incident_id = response.get_json()["incidents"][0]["incident_id"]
+        acknowledged = self.client.post(
+            f"/api/incidents/{incident_id}/acknowledge",
+            json={"acknowledged_by": "operator", "p6_followup": True},
+            headers={"X-Chem-Shield-P6-Confirmation": token},
+        )
+        self.assertEqual(acknowledged.status_code, 200)
+        self.assertFalse(acknowledged.get_json()["p6_auto_stop_armed"])
 
     def test_p6_refuses_non_loopback_machine_target(self):
         with patch.object(DeviceConnection, "connect", side_effect=ConnectionError):

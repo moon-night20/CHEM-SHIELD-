@@ -67,6 +67,19 @@ register are shown in the authenticated Admin console.
 The operator console shows the PLC connection state, actual and target RPM,
 temperature, pressure, power, operator command history, and the latest machine
 events. Commands and test events are disabled while the PLC is offline.
+For an active CRITICAL incident, acknowledging the HMI warning opens a
+second stop prompt. The HMI starts its 15-second fallback timer as soon as the
+incident becomes CRITICAL; acknowledging does not reset the countdown.
+Selecting **STOP MACHINE NOW** stops the loopback virtual PLC immediately; if
+the operator dismisses or does not act on the prompt, the HMI applies the same
+simulated stop when the original countdown expires. The countdown is managed by
+the HMI server, so it continues if the prompt is dismissed or the browser tab
+is closed while that server remains running. This is limited to the loopback
+simulator, does not contact physical equipment, and does not restart the machine
+automatically.
+Both operator STOP and the Part 6 simulated stop also clear the override mask,
+disabling all four Attack Console values (temperature, pressure, power, and
+speed) and resetting the test event.
 Its live process-condition badge reads CRITICAL when temperature exceeds
 70 °C, pressure exceeds 4 bar, power exceeds 12 kW, or speed exceeds 1500 rpm.
 At or below all upper limits it reads NORMAL. This is an alert-only simulation

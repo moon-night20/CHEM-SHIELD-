@@ -32,7 +32,11 @@ limits are 70 °C, 4 bar, 12 kW, and 1500 RPM. This operational indicator is
 separate from the Part 4 detector score and is not a probability.
 P2 network replay and the P5 physical monitor can explicitly publish scored
 events to the HMI's loopback `POST /api/risk/events` endpoint. No background
-capture or automated response is enabled.
+capture is enabled. When an incident becomes CRITICAL, the HMI starts a
+15-second fallback stop timer for the loopback simulator. Acknowledging the
+warning opens a stop prompt but does not reset the timer. The operator can stop
+it immediately; there is no automatic restart or connection to physical
+equipment.
 
 ## Start the complete virtual machine
 
