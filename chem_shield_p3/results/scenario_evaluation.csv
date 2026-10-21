@@ -1,5 +1,8 @@
-scenario,total_samples,anomalous_samples,detected_anomalous_samples,detection_rate,normal_samples,false_positives,false_positive_rate,accuracy,precision,recall,f1_score,true_positives,true_negatives,false_negatives
-normal,100,0,0,0.0,100,30,0.3,0.7,0.0,0.0,0.0,0,70,0
-sudden_change,30,30,27,0.9,0,0,0.0,0.9,1.0,0.9,0.9473684210526315,27,0,3
-unstable_behavior,30,30,29,0.9666666666666667,0,0,0.0,0.9666666666666667,1.0,0.9666666666666667,0.9830508474576272,29,0,1
-gradual_deviation,40,40,2,0.05,0,0,0.0,0.05,1.0,0.05,0.09523809523809523,2,0,38
+scenario,total_samples,anomalous_samples,detected_anomalous_samples,detection_rate,normal_samples,false_positives,false_positive_rate,normal_duration_hours,false_alarms_per_hour,accuracy,precision,recall,f1_score,true_positives,true_negatives,false_negatives,detection_delay_samples,detection_delay_seconds
+normal,7200,0,0,0.0,7200,339,0.04708333333333333,1.0,339.0,0.9529166666666666,0.0,0.0,0.0,0,6861,0,,
+sudden_change,30,30,0,0.0,0,0,0.0,0.0,,0.0,0.0,0.0,0.0,0,0,30,,
+unstable_behavior,30,30,19,0.6333333333333333,0,0,0.0,0.0,,0.6333333333333333,1.0,0.6333333333333333,0.7755102040816326,19,0,11,4,2.0
+gradual_deviation,40,40,4,0.1,0,0,0.0,0.0,,0.1,1.0,0.1,0.18181818181818182,4,0,36,34,17.0
+heavy_sensor_noise,40,40,32,0.8,0,0,0.0,0.0,,0.8,1.0,0.8,0.8888888888888888,32,0,8,1,0.5
+slow_gradual_drift,40,40,3,0.075,0,0,0.0,0.0,,0.075,1.0,0.075,0.13953488372093023,3,0,37,1,0.5
+stealthy_in_range,40,40,35,0.875,0,0,0.0,0.0,,0.875,1.0,0.875,0.9333333333333333,35,0,5,0,0.0

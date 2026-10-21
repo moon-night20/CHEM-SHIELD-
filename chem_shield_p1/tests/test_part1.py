@@ -27,9 +27,13 @@ from chem_shield_p1.process.machine import (
     MAX_SIMULATED_TEMPERATURE_C,
     ProcessUnit,
 )
+from chem_shield_p1.process import modbus_server
 
 
 class PartOneTests(unittest.TestCase):
+    def test_modbus_server_module_imports(self):
+        self.assertTrue(callable(modbus_server.create_context))
+
     def test_process_ramps_and_coasts(self):
         unit = ProcessUnit(seed=1)
         ramp = [unit.step(True, 1500).rpm for _ in range(8)]
@@ -45,10 +49,10 @@ class PartOneTests(unittest.TestCase):
         unit = ProcessUnit(seed=1)
         for _ in range(1200):
             state = unit.step(True, 3000)
-            self.assertLessEqual(state.temperature, MAX_SIMULATED_TEMPERATURE_C)
-            self.assertLessEqual(state.pressure, MAX_SIMULATED_PRESSURE_BAR)
-            self.assertLessEqual(state.power, MAX_SIMULATED_POWER_KW)
-            self.assertLessEqual(state.rpm, MAX_SIMULATED_SPEED_RPM)
+            self.assertLess(state.temperature, MAX_SIMULATED_TEMPERATURE_C)
+            self.assertLess(state.pressure, MAX_SIMULATED_PRESSURE_BAR)
+            self.assertLess(state.power, MAX_SIMULATED_POWER_KW)
+            self.assertLess(state.rpm, MAX_SIMULATED_SPEED_RPM)
 
     def test_normal_process_values_fluctuate_below_operating_limits(self):
         unit = ProcessUnit(seed=1)
@@ -63,9 +67,12 @@ class PartOneTests(unittest.TestCase):
             self.assertGreater(max(values) - min(values), minimum_range)
 
         averages = [sum(sample[index] for sample in recent) / len(recent) for index in range(4)]
-        self.assertLess(averages[0], 1490)
+        self.assertLess(averages[0], 1480)
+        self.assertGreater(averages[1], 63)
         self.assertLess(averages[1], 69)
+        self.assertGreater(averages[2], 3.5)
         self.assertLess(averages[2], 3.95)
+        self.assertGreater(averages[3], 10.9)
         self.assertLess(averages[3], 11.8)
         for index, maximum in enumerate((
             MAX_SIMULATED_SPEED_RPM,
@@ -84,10 +91,10 @@ class PartOneTests(unittest.TestCase):
         state.rpm = 1600
 
         cap_uncommanded_values(state, registers)
-        self.assertEqual(state.temperature, 69.99)
-        self.assertEqual(state.pressure, 3.99)
-        self.assertEqual(state.power, 11.99)
-        self.assertEqual(state.rpm, 1499)
+        self.assertEqual(state.temperature, 68.9)
+        self.assertEqual(state.pressure, 3.95)
+        self.assertEqual(state.power, 11.9)
+        self.assertEqual(state.rpm, 1490)
 
         registers[SIM_OVERRIDE_MASK] = (
             OVERRIDE_TEMPERATURE | OVERRIDE_PRESSURE | OVERRIDE_POWER | OVERRIDE_SPEED

@@ -50,7 +50,7 @@
           <thead>
             <tr>
               <th>ID</th><th>Asset</th><th>Risk</th><th>Score</th><th>Time window</th>
-              <th>Network / physical</th><th>Rule confirmation</th><th>Status</th>
+              <th>Network / physical</th><th>Warning details</th><th>Rule confirmation</th><th>Status</th>
             </tr>
           </thead>
           <tbody>
@@ -62,6 +62,17 @@
                 <td>{{ incident.risk_score if incident.risk_score is not none else "Unavailable" }}</td>
                 <td>{{ incident.start_time }}<br>to {{ incident.end_time }}</td>
                 <td>{{ incident.event_counts.network }} / {{ incident.event_counts.physical }}</td>
+                <td>
+                  {% for warning in incident.warning_details %}
+                    <div class="incident-warning-details">
+                      <strong>{{ warning.asset_id }} · {{ warning.severity }}</strong><br>
+                      {{ warning.trigger }} · {{ warning.comparison }}<br>
+                      {{ warning.timestamp }}
+                    </div>
+                  {% else %}
+                    <span class="empty-state">No detailed warning available.</span>
+                  {% endfor %}
+                </td>
                 <td>
                   {% if incident.rule_confirmation is none %}Unavailable
                   {% elif incident.rule_confirmation %}Confirmed

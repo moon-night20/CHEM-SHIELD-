@@ -4,7 +4,7 @@
     "temperature": "temperature",
     "pressure": "pressure",
     "power": "power",
-    "speed": "speed",
+    "speed": "rpm",
     "vibration": "vibration"
   },
   "units": {
@@ -56,6 +56,30 @@
       "minimum_speed_when_running": null,
       "maximum_speed_when_stopped": null,
       "severity": "high"
+    },
+    "physics_consistency": {
+      "rpm_rising_power_flat": {
+        "minimum_rpm_increase": 150,
+        "maximum_power_change": 0.25,
+        "severity": "medium"
+      },
+      "temperature_falling_under_load": {
+        "minimum_power": 4,
+        "minimum_temperature_drop": 1,
+        "severity": "medium"
+      },
+      "pressure_not_tracking_rpm": {
+        "minimum_rpm_change": 200,
+        "minimum_pressure_change": 0.1,
+        "severity": "medium"
+      },
+      "frozen_sensor": {
+        "sensors": ["temperature", "pressure", "power", "speed"],
+        "duration_seconds": 30,
+        "tolerance": 0,
+        "only_when_running": true,
+        "severity": "medium"
+      }
     }
   }
 }

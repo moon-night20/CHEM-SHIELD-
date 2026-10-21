@@ -32,8 +32,8 @@ TELEMETRY_COLUMNS = (
     "asset_id",
     "temperature",
     "pressure",
-    "speed",
-    "vibration",
+    "rpm",
+    "power",
 )
 
 
@@ -272,13 +272,14 @@ def load_telemetry(path: str | Path) -> pd.DataFrame:
         lambda value: isinstance(value, str) and bool(value.strip())
     ).all():
         raise ContractError("telemetry field 'asset_id' must contain non-empty strings")
-    for column in ("temperature", "pressure", "speed", "vibration"):
+    for column in ("temperature", "pressure", "rpm", "power"):
         try:
             frame[column] = pd.to_numeric(frame[column], errors="raise")
         except (ValueError, TypeError) as exc:
             raise ContractError(f"telemetry column '{column}' must contain numeric values") from exc
         if not frame[column].map(lambda value: math.isfinite(float(value))).all():
             raise ContractError(f"telemetry column '{column}' must contain finite values")
+    frame["speed"] = frame["rpm"]
     frame["_parsed_timestamp"] = frame["timestamp"].map(
         lambda value: parse_timestamp(value, "telemetry.timestamp")
     )

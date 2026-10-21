@@ -11,9 +11,22 @@ import pandas as pd
 import sklearn
 
 from chem_shield_p3.src.detector import PhysicalAnomalyDetector
-from chem_shield_p3.src.features import FEATURE_COLUMNS, build_feature_frame
+from chem_shield_p3.src.features import (
+    BASE_FEATURE_COLUMNS,
+    FEATURE_COLUMNS,
+    PHYSICS_FEATURE_COLUMNS,
+    RATE_FEATURE_COLUMNS,
+    build_feature_frame,
+)
 from chem_shield_p4.correlation.validator import EventValidator
-from chem_shield_p3.scripts.evaluate_model import calculate_evaluation, summarize_detection_latency
+from chem_shield_p3.scripts.evaluate_heldout import (
+    HELDOUT_SCENARIOS,
+    select_heldout_scenarios,
+)
+from chem_shield_p3.scripts.evaluate_model import (
+    calculate_evaluation,
+    summarize_detection_latency,
+)
 from chem_shield_p3.scripts.generate_test_scenarios import generate_test_scenarios
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,9 +42,14 @@ class PhysicalDetectorSmokeTests(unittest.TestCase):
 
         self.assertGreater(len(prepared), 0)
         self.assertTrue(set(FEATURE_COLUMNS).issubset(set(features.columns)))
-        self.assertIn("temperature_rate", features.columns)
-        self.assertIn("vibration_rate", features.columns)
-        self.assertIn("speed_rate", features.columns)
+        self.assertEqual(BASE_FEATURE_COLUMNS, ("rpm", "temperature", "pressure", "power"))
+        self.assertTrue(set(RATE_FEATURE_COLUMNS).issubset(features.columns))
+        self.assertTrue(set(PHYSICS_FEATURE_COLUMNS).issubset(features.columns))
+        self.assertTrue(set(BASE_FEATURE_COLUMNS).issubset(prepared.columns))
+        self.assertNotIn("vibration", prepared.columns)
+        self.assertGreater(prepared["rpm"].max(), 100)
+        self.assertGreaterEqual(prepared["target_rpm"].nunique(), 8)
+        self.assertEqual(set(prepared["motor_status"]), {"RUNNING", "STOPPED"})
 
     def test_detector_loads_model_and_scores_scenarios(self):
         detector = PhysicalAnomalyDetector.load(MODEL_PATH)
@@ -88,6 +106,11 @@ class PhysicalDetectorSmokeTests(unittest.TestCase):
                 "false_positive_rate",
             }.issubset(first_reports[2].columns)
         )
+        self.assertTrue({
+            "detection_delay_seconds",
+            "false_alarms_per_hour",
+            "normal_duration_hours",
+        }.issubset(first_reports[2].columns))
         pd.testing.assert_frame_equal(
             summarize_detection_latency(first_reports[3]),
             summarize_detection_latency(second_reports[3]),
@@ -97,9 +120,37 @@ class PhysicalDetectorSmokeTests(unittest.TestCase):
         self.assertTrue(hard_scenarios.issubset(set(first["scenario"])))
         stealth = first[first["scenario"] == "stealthy_in_range"]
         normal = pd.read_csv(NORMAL_DATA)
-        for column in ("motor_speed", "temperature", "vibration"):
+        for column in BASE_FEATURE_COLUMNS:
             self.assertGreaterEqual(stealth[column].min(), normal[column].min())
             self.assertLessEqual(stealth[column].max(), normal[column].max())
+        self.assertTrue(set(FEATURE_COLUMNS).issubset(detector.feature_columns))
+
+    def test_heldout_evaluation_keeps_complete_attack_types_out_of_training(self):
+        scenarios = pd.DataFrame([
+            {"timestamp": 1, "scenario": "normal", "actual_label": 0},
+            {"timestamp": 2, "scenario": "slow_gradual_drift", "actual_label": 1},
+            {"timestamp": 3, "scenario": "stealthy_in_range", "actual_label": 1},
+            {"timestamp": 4, "scenario": "sudden_change", "actual_label": 1},
+        ])
+
+        selected = select_heldout_scenarios(scenarios)
+        self.assertEqual(set(selected["scenario"]), {"normal", *HELDOUT_SCENARIOS})
+        self.assertEqual(int((selected["actual_label"] == 1).sum()), 2)
+
+    def test_scenario_report_measures_latency_and_normal_false_alarms_per_hour(self):
+        events = pd.DataFrame([
+            {"timestamp": 0, "scenario": "normal", "actual_label": 0, "is_anomaly": True},
+            {"timestamp": 1, "scenario": "normal", "actual_label": 0, "is_anomaly": False},
+            {"timestamp": 2, "scenario": "slow_gradual_drift", "actual_label": 1, "is_anomaly": False},
+            {"timestamp": 3, "scenario": "slow_gradual_drift", "actual_label": 1, "is_anomaly": True},
+        ])
+        *_, per_scenario, _latency, _errors = calculate_evaluation(events)
+        normal = per_scenario.set_index("scenario").loc["normal"]
+        drift = per_scenario.set_index("scenario").loc["slow_gradual_drift"]
+
+        self.assertEqual(normal["false_alarms_per_hour"], 3600.0)
+        self.assertEqual(drift["detection_rate"], 0.5)
+        self.assertEqual(drift["detection_delay_seconds"], 0.5)
 
     def test_model_metadata_records_and_warns_on_sklearn_version_mismatch(self):
         detector = PhysicalAnomalyDetector().fit(pd.read_csv(NORMAL_DATA).head(100))

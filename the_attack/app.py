@@ -16,6 +16,7 @@ from typing import Any, Optional, Union
 
 from flask import Flask, jsonify, render_template, request
 
+from chem_shield_common.publisher import publish_events
 from chem_shield_p1.communication.device_connection import DeviceConnection
 from chem_shield_p1.data.store import TelemetryStore
 from chem_shield_p1.plc.register_map import (
@@ -211,13 +212,20 @@ class CommandHistoryStore:
                     observed_value,
                     int(exceeded_limit),
                     warning,
-                    "Warning event recorded; no risk incident created"
+                    "Warning recorded; risk event publication pending"
                     if exceeded_limit
                     else "No incident linked",
                     command_id,
                 ),
             )
         return result.rowcount == 1
+
+    def update_incident_status(self, command_id: str, status: str) -> None:
+        with sqlite3.connect(self.path) as connection:
+            connection.execute(
+                "UPDATE ot_console_commands SET incident_status=? WHERE id=?",
+                (status, command_id),
+            )
 
     def recent(self, limit: int = 50) -> list[dict[str, Any]]:
         with sqlite3.connect(self.path) as connection:
@@ -296,7 +304,19 @@ def create_app(
         app.logger.info("Virtual PLC is not connected at console startup")
 
     def plc_call(action):
-        return device.call(action)
+        try:
+            return device.call(action)
+        except ConnectionError as first_error:
+            app.logger.warning(
+                "Virtual PLC connection dropped; reconnecting to %s:%s",
+                device.host,
+                device.port,
+            )
+            try:
+                device.reconnect()
+            except ConnectionError as reconnect_error:
+                raise reconnect_error from first_error
+            return device.call(action)
 
     def limit_for(parameter: str) -> Optional[float]:
         limit_key = PARAMETERS.get(parameter, {}).get("limit_key", parameter)
@@ -366,6 +386,42 @@ def create_app(
                     "new_value": observed_value,
                     "severity": limits.get(limit_key, {}).get("high_severity", "high"),
                 })
+                event = {
+                    "event_id": f"ot-command-{command['id']}",
+                    "timestamp": sample["timestamp"],
+                    "source": "ot_command_console",
+                    "asset_id": "PLC-01",
+                    "event_type": "physical",
+                    "anomaly_score": 1.0,
+                    "severity": str(
+                        limits.get(limit_key, {}).get("high_severity", "critical")
+                    ).upper(),
+                    "evidence": {
+                        "sensor": limit_key,
+                        "rule_id": f"{limit_key.upper()}-HIGH",
+                        "detection_method": "configured_limit",
+                        "value": observed_value,
+                        "configured_threshold": threshold,
+                        "unit": PARAMETERS[parameter]["unit"],
+                        "message": warning,
+                    },
+                }
+                result = publish_events([event])
+                if result["accepted"] > 0 and result["failed_batches"] == 0:
+                    commands.update_incident_status(
+                        command["id"], "Risk event saved to HMI incident register"
+                    )
+                else:
+                    publication_error = "; ".join(result["errors"]) or (
+                        f"HMI rejected {result['rejected']} risk event(s)"
+                    )
+                    commands.update_incident_status(
+                        command["id"], f"Risk event was not saved: {publication_error}"
+                    )
+                    app.logger.error(
+                        "OT command risk event was not persisted by HMI: %s",
+                        publication_error,
+                    )
 
     @app.get("/")
     def index():

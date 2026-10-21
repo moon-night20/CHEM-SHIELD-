@@ -8,7 +8,7 @@ HMI; monitor logic and its tests live here.
 
 - Part 1 telemetry is stored by `chem_shield_p1/data/store.py`. Relevant
   columns are `timestamp`, `machine_id`, `motor_status`, `rpm`, `temperature`,
-  and `pressure`.
+  `pressure`, and `power`.
 - Part 1 test-event records use the fields in
   `chem_shield_p1/events/abnormal_events.py`: timestamp, source, machine_id,
   event_type, parameter, old_value, new_value, severity. Part 5
@@ -19,15 +19,16 @@ HMI; monitor logic and its tests live here.
   this interface.
 - Part 5 uses Part 3's persisted `PhysicalAnomalyDetector` artifact as its only
   physical ML model. P5 retains its sensor validation and pressure/temperature/
-  speed rule checks; the P3 model consumes `motor_speed`, `temperature`, and
-  `vibration`. Its score is an anomaly indicator, not a probability. The P5
-  sample vibration column is explicitly synthetic. Database telemetry without
-  vibration remains available to rule checks but is not ML-scored.
+  speed rule checks; the P3 model consumes RPM, temperature, pressure, and
+  power, their per-reading rates, and physical-consistency residuals. Its score
+  is an anomaly indicator, not a probability. If a reading lacks a required
+  model channel or cannot be scored, P5 emits a medium-severity
+  `model_scoring_unavailable` warning event.
 - `config.example.json` maps the monitor's local machine IDs to the shared
   Part 4 correlation asset `PLC-01` through `risk_asset_id`.
 
 The physical field mapping is `temperature` (degC), `pressure` (bar), `power`
-(kW), `speed` from Part 1's `rpm` (rpm), `operating_state` from `motor_status`,
+(kW), `rpm` from Part 1's `rpm` (rpm), `operating_state` from `motor_status`,
 and `asset_id` from `machine_id`. Part 1 simulator readings are fictional
 simulated values.
 
@@ -37,9 +38,8 @@ P1 writes simulated telemetry locally; P5 reads it or a synthetic CSV, applies
 sensor validation and rules, and uses P3's saved model for physical anomaly
 scores. With `--publish`, scored events are adapted by
 `to_part4_correlation_event()` and sent through the shared publisher to the P1
-HMI. Readings that cannot be model-scored (for example, telemetry without
-vibration) remain available to local rule checks and are not published as
-scored risk events.
+HMI. Readings that cannot be model-scored remain available to local rule checks
+and produce a warning event in the monitor output.
 
 ## Setup and commands
 
@@ -77,6 +77,22 @@ python3 -m chem_shield_p5.ot_monitor \
   --database chem_shield_p1/data/telemetry.db \
   --config chem_shield_p5/ot_monitor/config.example.json
 ```
+
+Continuously follow newly appended P1 telemetry and publish debounced scored
+alerts to the loopback HMI. Start the HMI with the same ingest token first:
+
+```bash
+export CHEM_SHIELD_INGEST_TOKEN="local-demo-only-change-me"
+python3 -m chem_shield_p5.ot_monitor --follow
+```
+
+Follow mode reads `chem_shield_p1/data/telemetry.db` by default. Use
+`--database path/to/telemetry.db` to select another local simulator database,
+`--poll-interval 2` to check every two seconds, and `--debounce-seconds 60` to
+limit repeated publications for the same asset and alert type. It validates
+each new reading, runs the configured rules and P3 model, and only publishes
+events with a model score to the loopback `/api/risk/events` endpoint. The
+SQLite source is opened read-only; no PLC writes or automated responses occur.
 
 Persist alert summaries only with explicit opt-in:
 
@@ -118,8 +134,13 @@ eligible CRITICAL incident in the HMI.
 
 Supported rule checks include configured upper/lower bounds, rate-of-change
 limits, fluctuations, state-specific sensor ranges, and speed expectations
-while running or stopped. These are engineering/state checks, not statistical
-model scores; an alert does not suppress or replace a model result.
+while running or stopped. Configurable physics-consistency rules also detect
+RPM rising while power is flat, temperature falling under load, pressure failing
+to track an RPM change, and configured sensors remaining frozen too long. Their
+thresholds, sensor lists, and severities are set under
+`rules.physics_consistency` in `config.example.json`; these rules are alert-only.
+They are engineering/state checks, not statistical model scores; an alert does
+not suppress or replace a model result.
 
 The monitor validates missing, duplicate, stale, malformed, non-finite, and
 configured-implausible measurements. It does not replace invalid measurements

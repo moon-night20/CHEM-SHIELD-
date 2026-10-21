@@ -1,10 +1,4 @@
-"""Validation and feature engineering for synthetic physical-process telemetry.
-
-Rate features are differences between consecutive observations, expressed per
-observation rather than per unit of time. For a new independent stream the
-first rate is set to 0.0. A caller processing one observation at a time may
-supply the preceding sensor state instead.
-"""
+"""Validation and feature engineering for simulated process telemetry."""
 
 from __future__ import annotations
 
@@ -14,32 +8,47 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-BASE_FEATURE_COLUMNS = ("motor_speed", "temperature", "vibration")
-RATE_FEATURE_COLUMNS = ("temperature_rate", "vibration_rate", "speed_rate")
-FEATURE_COLUMNS = (*BASE_FEATURE_COLUMNS, *RATE_FEATURE_COLUMNS)
+BASE_FEATURE_COLUMNS = ("rpm", "temperature", "pressure", "power")
+RATE_FEATURE_COLUMNS = (
+    "rpm_rate",
+    "temperature_rate",
+    "pressure_rate",
+    "power_rate",
+)
+PHYSICS_FEATURE_COLUMNS = (
+    "power_rpm_residual",
+    "temperature_power_residual",
+    "pressure_rpm_residual",
+)
+FEATURE_COLUMNS = (
+    *BASE_FEATURE_COLUMNS,
+    *RATE_FEATURE_COLUMNS,
+    *PHYSICS_FEATURE_COLUMNS,
+)
 RATE_SOURCE_COLUMNS = {
+    "rpm_rate": "rpm",
     "temperature_rate": "temperature",
-    "vibration_rate": "vibration",
-    "speed_rate": "motor_speed",
+    "pressure_rate": "pressure",
+    "power_rate": "power",
 }
-
-# Explicit shared mapping from OT telemetry measurement keys to P3 model feature names
 TELEMETRY_TO_FEATURE_MAP = {
-    "speed": "motor_speed",
-    "motor_speed": "motor_speed",
+    "rpm": "rpm",
+    "speed": "rpm",
+    "motor_speed": "rpm",
     "temperature": "temperature",
-    "vibration": "vibration",
+    "pressure": "pressure",
+    "power": "power",
 }
 
 
 def map_telemetry_reading(measurements: Mapping[str, Any]) -> dict[str, float]:
-    """Map raw telemetry measurements (e.g. from P5 reading) to P3 feature names."""
-    result = {}
+    """Map telemetry aliases to the four process channels used by P3."""
+    result: dict[str, float] = {}
     for source_key, target_key in TELEMETRY_TO_FEATURE_MAP.items():
         if source_key in measurements and target_key not in result:
-            val = measurements[source_key]
-            if val is not None:
-                result[target_key] = float(val)
+            value = measurements[source_key]
+            if value is not None:
+                result[target_key] = float(value)
     return result
 
 
@@ -85,15 +94,15 @@ def _clean_process_values(data: pd.DataFrame) -> pd.DataFrame:
             "process columns contain no numeric values: " + ", ".join(empty_columns)
         )
 
-    # A short missing run is linearly interpolated, with edge gaps filled from the
-    # nearest observed value. The same cleaned values are used for rates and ML input.
     cleaned = numeric.interpolate(limit_direction="both").ffill().bfill()
     if cleaned.isna().any().any():
         raise TelemetryValidationError("process values could not be completed safely")
     return cleaned.astype(float)
 
 
-def _coerce_previous_state(previous_state: Mapping[str, Any] | None) -> dict[str, float] | None:
+def _coerce_previous_state(
+    previous_state: Mapping[str, Any] | None,
+) -> dict[str, float] | None:
     if previous_state is None:
         return None
     if not isinstance(previous_state, Mapping):
@@ -121,14 +130,11 @@ def build_feature_frame(
     stream_column: str | None = None,
     require_timestamp: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Return cleaned telemetry and the six Isolation Forest feature columns.
+    """Return cleaned telemetry and model features for four sensor channels.
 
-    If ``stream_column`` is supplied, each stream's first observation receives
-    zero rates. This is useful for independently generated evaluation scenarios.
-    ``previous_state`` is intentionally not combined with grouped streams because
-    it describes one preceding state, not one state per stream.
+    Rates are differences per observation. Physics residuals compare the
+    measured channels against the simulator's approximate normal relationships.
     """
-
     _validate_dataframe(data)
     _validate_timestamp(data, required=require_timestamp)
     if stream_column is not None and stream_column not in data.columns:
@@ -147,8 +153,8 @@ def build_feature_frame(
     previous = _coerce_previous_state(previous_state)
     rate_values = pd.DataFrame(index=prepared.index)
     for rate_column, source_column in RATE_SOURCE_COLUMNS.items():
+        differences = cleaned[source_column].diff()
         if stream_column is None:
-            differences = cleaned[source_column].diff()
             first_rate = (
                 cleaned[source_column].iloc[0] - previous[source_column]
                 if previous is not None
@@ -160,8 +166,18 @@ def build_feature_frame(
                 prepared[stream_column], sort=False
             ).diff().fillna(0.0)
         rate_values[rate_column] = differences.astype(float)
-
     prepared.loc[:, list(RATE_FEATURE_COLUMNS)] = rate_values
+
+    normalized_rpm = np.clip(cleaned["rpm"] / 1500.0, 0.0, 1.0)
+    normalized_power = np.clip((cleaned["power"] - 0.2) / 11.6, 0.0, 1.0)
+    prepared["power_rpm_residual"] = cleaned["power"] - (0.2 + 11.6 * normalized_rpm)
+    prepared["temperature_power_residual"] = cleaned["temperature"] - (
+        20.0 + 48.0 * normalized_power
+    )
+    prepared["pressure_rpm_residual"] = cleaned["pressure"] - (
+        1.0 + 2.95 * normalized_rpm
+    )
+
     feature_frame = prepared.loc[:, list(FEATURE_COLUMNS)].astype(float)
     if not np.isfinite(feature_frame.to_numpy()).all():
         raise TelemetryValidationError("generated features must be finite")
@@ -170,7 +186,6 @@ def build_feature_frame(
 
 def last_process_state(prepared_telemetry: pd.DataFrame) -> dict[str, float]:
     """Return the last cleaned sensor values for a caller's next observation."""
-
     _validate_dataframe(prepared_telemetry)
     return {
         column: float(prepared_telemetry[column].iloc[-1])

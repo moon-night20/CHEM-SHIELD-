@@ -1,5 +1,5 @@
-"""Passive network and OT security analysis for CHEM-SHIELD Part 2/3.
+"""Passive fixture analysis and loopback virtual-PLC monitoring for CHEM-SHIELD.
 
-This package intentionally keeps network telemetry separate from the Part 1 physical
-process model and does not perform live PLC writes or active OT scanning.
+This package does not capture production traffic, perform active OT scanning,
+block Modbus requests, or issue PLC writes.
 """

@@ -28,6 +28,12 @@ def main() -> None:
         contamination=args.contamination,
         random_state=42,
     ).fit(normal_data, stream_column=args.stream_column)
+    detector.training_metadata["training_data_source"] = (
+        "P1 ProcessUnit simulator with start/stop transitions and multiple RPM targets"
+    )
+    detector.training_metadata["training_rpm_targets"] = [
+        0, 250, 350, 500, 750, 900, 1200, 1300, 1450
+    ]
     model_path = detector.save(args.model)
 
     print(f"Trained {detector.training_metadata['model']} on {len(normal_data)} normal observations.")

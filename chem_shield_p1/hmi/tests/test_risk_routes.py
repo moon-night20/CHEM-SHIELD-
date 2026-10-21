@@ -33,6 +33,52 @@ class RiskRouteTests(unittest.TestCase):
         self.assertIsNone(body["risk_score"])
         self.assertFalse(body["scores_are_probabilities"])
 
+    def test_operator_page_hides_sensor_limit_targets(self):
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Mode", response.data)
+        self.assertNotIn(b"70.0 \xc2\xb0C", response.data)
+        self.assertNotIn(b"4.00 bar", response.data)
+        self.assertNotIn(b"12.00 kW", response.data)
+        self.assertIn(b'max="1450" value="1400"', response.data)
+
+    def test_control_caps_speed_target_below_operating_limit(self):
+        registers = [1, 1500, 1400, 6500, 350, 1100, 0, 0]
+
+        class FakeClient:
+            def read_holding_registers(self, address, count, slave):
+                return SimpleNamespace(
+                    isError=lambda: False,
+                    registers=registers[address:address + count],
+                )
+
+            def write_registers(self, address, values, slave):
+                registers[address:address + len(values)] = values
+                return SimpleNamespace(isError=lambda: False)
+
+            def write_register(self, address, value, slave):
+                registers[address] = value
+                return SimpleNamespace(isError=lambda: False)
+
+        fake_client = FakeClient()
+        with (
+            patch.object(DeviceConnection, "connect"),
+            patch.object(
+                DeviceConnection,
+                "call",
+                autospec=True,
+                side_effect=lambda _device, action: action(fake_client),
+            ),
+        ):
+            response = self.client.post(
+                "/api/control",
+                json={"action": "setpoint", "target_rpm": 3000},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["target_rpm"], 1450)
+        self.assertEqual(registers[1], 1450)
+
     def test_posted_event_is_correlated_persisted_and_acknowledged(self):
         response = self.client.post(
             "/api/risk/events",
@@ -82,6 +128,37 @@ class RiskRouteTests(unittest.TestCase):
         self.assertEqual(incident["risk_level"], "UNASSESSED")
         self.assertIsNone(incident["risk_score"])
 
+    def test_medium_incident_warning_includes_sensor_value_limit_and_time(self):
+        accepted = self.client.post(
+            "/api/risk/events",
+            json={
+                "event_id": "warning-details-temperature-high",
+                "timestamp": "2026-10-14T09:30:00Z",
+                "source": "ot_monitor",
+                "asset_id": "PLC-01",
+                "event_type": "physical",
+                "severity": "medium",
+                "anomaly_score": 0.7,
+                "evidence": {
+                    "sensor": "temperature",
+                    "rule_id": "TEMPERATURE-HIGH",
+                    "value": 90,
+                    "unit": "degC",
+                    "configured_threshold": 70,
+                    "message": "temperature exceeded configured high limit",
+                },
+            },
+        )
+        self.assertEqual(accepted.status_code, 200)
+
+        warning = self.client.get("/api/risk").get_json()["active_incidents"][0][
+            "warning_details"
+        ][0]
+        self.assertEqual(warning["asset_id"], "PLC-01")
+        self.assertEqual(warning["trigger"], "temperature / TEMPERATURE-HIGH")
+        self.assertEqual(warning["comparison"], "90 degC vs limit 70 degC")
+        self.assertEqual(warning["timestamp"], "2026-10-14T09:30:00Z")
+
     def test_existing_hmi_remains_available_when_plc_is_disconnected(self):
         response = self.client.get("/api/state")
         self.assertEqual(response.status_code, 503)
@@ -130,10 +207,7 @@ class RiskRouteTests(unittest.TestCase):
                     at_limit = client.get("/api/state").get_json()
                     self.assertEqual(at_limit["machine_condition"], "NORMAL")
                     self.assertEqual(at_limit["limit_alerts"], [])
-                    self.assertEqual(at_limit["limits"]["temperature"]["high"], 70)
-                    self.assertEqual(at_limit["limits"]["pressure"]["high"], 4)
-                    self.assertEqual(at_limit["limits"]["power"]["high"], 12)
-                    self.assertEqual(at_limit["limits"]["speed"]["high"], 1500)
+                    self.assertNotIn("limits", at_limit)
 
                     if sensor == "temperature":
                         registers[3] += 1

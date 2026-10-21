@@ -1,25 +1,54 @@
 {% extends "base.html" %}
 {% block title %}Audit log - CHEM-SHIELD{% endblock %}
 {% block content %}
-  <h1>Administrative audit log</h1>
-  <section class="panel">
+  <section class="page-heading">
+    <div>
+      <h1>Audit log</h1>
+      <p>Administrator actions and virtual-machine security events.</p>
+    </div>
+  </section>
+  <section class="panel audit-panel">
     <form method="get" class="filter-form">
       <label for="user">Filter by username</label><input id="user" name="user" value="{{ user_filter }}">
       <label for="action">Filter by action</label><input id="action" name="action" value="{{ action_filter }}">
-      <button type="submit">Filter</button>
+      <button type="submit">Apply filters</button>
     </form>
     {% if entries %}
       <div class="table-wrap">
-        <table>
-          <thead><tr><th>Time</th><th>User</th><th>Role</th><th>Source IP</th><th>Action</th><th>Incident</th><th>Details</th></tr></thead>
+        <table class="audit-table">
+          <colgroup>
+            <col class="audit-time-column">
+            <col class="audit-user-column">
+            <col class="audit-action-column">
+            <col class="audit-incident-column">
+            <col class="audit-details-column">
+          </colgroup>
+          <thead><tr><th>Time (UTC)</th><th>User / source</th><th>Action</th><th>Incident</th><th>Summary</th></tr></thead>
           <tbody>
             {% for entry in entries %}
-              <tr><td>{{ entry.timestamp }}</td><td>{{ entry.username }}</td><td>{{ entry.role }}</td>
-                <td>{{ entry.source_ip }}</td><td>{{ entry.action }}</td><td>{{ entry.incident_id or "" }}</td><td>{{ entry.detail }}</td></tr>
+              <tr>
+                <td><time title="{{ entry.timestamp }}">{{ entry.timestamp[:10] }}<br>{{ entry.timestamp[11:19] }}</time></td>
+                <td>{{ entry.username }}</td>
+                <td>{{ entry.action_label or entry.action.replace("_", " ")|title }}</td>
+                <td>
+                  {% if entry.incident_id %}
+                    <a href="{{ url_for('incident_detail', incident_id=entry.incident_id) }}">{{ entry.incident_id }}</a>
+                  {% else %}<span class="muted">—</span>{% endif %}
+                </td>
+                <td class="audit-summary-cell">
+                  <span>{{ entry.summary or entry.detail }}</span>
+                  <details class="audit-details">
+                    <summary>More details</summary>
+                    <p>Action code: {{ entry.action }}</p>
+                    {% if entry.summary %}<p>{{ entry.detail }}</p>{% endif %}
+                    <small>{{ entry.role }} · {{ entry.source_ip }}</small>
+                  </details>
+                </td>
+              </tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
-    {% else %}<p class="empty-state">No audit entries match.</p>{% endif %}
+    {% else %}<p class="empty-state">No audit entries match these filters.</p>{% endif %}
   </section>
 {% endblock %}

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from io import StringIO
+from unittest.mock import patch
 
 import pytest
 
@@ -35,8 +36,10 @@ class FakeProcess:
 def test_starts_readme_commands_in_order_without_network() -> None:
     launched: list[FakeProcess] = []
     readiness_checks: list[tuple[str, int, FakeProcess]] = []
+    environments: list[dict[str, str]] = []
 
     def process_factory(command: list[str], **kwargs) -> FakeProcess:
+        environments.append(kwargs["env"])
         process = FakeProcess(command, **kwargs)
         launched.append(process)
         return process
@@ -49,12 +52,15 @@ def test_starts_readme_commands_in_order_without_network() -> None:
         assert len(launched) == 1
 
     output = StringIO()
-    children = run_all.start_services(
-        python_executable="python-test",
-        process_factory=process_factory,
-        readiness_probe=readiness_probe,
-        stream=output,
-    )
+    with patch.dict("os.environ", {}, clear=True), patch(
+        "scripts.run_all.secrets.token_urlsafe", return_value="shared-demo-token"
+    ):
+        children = run_all.start_services(
+            python_executable="python-test",
+            process_factory=process_factory,
+            readiness_probe=readiness_probe,
+            stream=output,
+        )
     try:
         assert [child.name for child in children] == [
             "PLC", "Process", "HMI", "Admin", "OT Console"
@@ -76,6 +82,12 @@ def test_starts_readme_commands_in_order_without_network() -> None:
         assert "15000" in commands[2]
         assert "5001" in commands[4]
         assert all(process.command[0] == "python-test" for process in launched)
+        assert len(environments) == 5
+        assert all(
+            environment["CHEM_SHIELD_INGEST_TOKEN"] == "shared-demo-token"
+            for environment in environments
+        )
+        assert all(environment is environments[0] for environment in environments)
     finally:
         run_all.stop_services(children)
 

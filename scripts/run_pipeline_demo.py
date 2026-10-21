@@ -52,7 +52,11 @@ def _wait_for_hmi(url: str, process: subprocess.Popen | None) -> None:
         except (HTTPError, URLError, TimeoutError, OSError, ValueError) as exc:
             last_error = exc
             time.sleep(0.2)
-    raise RuntimeError(f"HMI did not become ready at {url}: {last_error}")
+    raise RuntimeError(
+        f"HMI did not become ready at {url}: {last_error}. "
+        "Start the HMI first, then export CHEM_SHIELD_INGEST_TOKEN with the "
+        "same token configured for the HMI."
+    )
 
 
 def _demo_environment(
@@ -131,8 +135,8 @@ def main(argv: list[str] | None = None) -> int:
         if hmi_responding and not os.environ.get("CHEM_SHIELD_INGEST_TOKEN"):
             raise RuntimeError(
                 "An existing HMI requires its configured CHEM_SHIELD_INGEST_TOKEN "
-                "for publishing. Set the same token for this runner and the HMI, "
-                "then restart the HMI."
+                "for publishing. Export CHEM_SHIELD_INGEST_TOKEN with the same "
+                "token configured for the HMI, then restart the runner."
             )
         child_environment = _demo_environment(
             temporary_hmi=not hmi_responding and args.start_hmi

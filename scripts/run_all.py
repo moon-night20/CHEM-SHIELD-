@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 import ipaddress
+import os
+import secrets
 import subprocess
 import sys
 import threading
@@ -157,6 +159,11 @@ def start_services(
     """Start children in dependency order, after the PLC is accepting connections."""
 
     safe_host = _loopback_host(host)
+    child_environment = dict(os.environ)
+    child_environment.setdefault(
+        "CHEM_SHIELD_INGEST_TOKEN",
+        secrets.token_urlsafe(32),
+    )
     children: list[ChildProcess] = []
     log_lock = threading.Lock()
     try:
@@ -170,6 +177,7 @@ def start_services(
                 stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,
+                env=child_environment,
             )
             if process.stdout is None:
                 raise RuntimeError(f"{name} process did not provide a log stream")

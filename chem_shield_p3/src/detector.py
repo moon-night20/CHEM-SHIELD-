@@ -20,6 +20,7 @@ from sklearn.exceptions import InconsistentVersionWarning, NotFittedError
 from .features import (
     BASE_FEATURE_COLUMNS,
     FEATURE_COLUMNS,
+    RATE_FEATURE_COLUMNS,
     TelemetryValidationError,
     build_feature_frame,
     last_process_state,
@@ -28,7 +29,7 @@ from .features import (
 MODEL_NAME = "IsolationForest"
 EVENT_SOURCE = "physical_ml"
 DEFAULT_ASSET_ID = "MOTOR-01"
-ARTIFACT_VERSION = 1
+ARTIFACT_VERSION = 2
 
 
 class PhysicalAnomalyDetector:
@@ -116,6 +117,13 @@ class PhysicalAnomalyDetector:
             "trained_at_utc": datetime.now(timezone.utc).isoformat(),
             "training_rows": int(len(prepared)),
             "feature_columns": self.feature_columns,
+            "training_sensor_columns": list(BASE_FEATURE_COLUMNS),
+            "physics_feature_columns": [
+                "power_rpm_residual",
+                "temperature_power_residual",
+                "pressure_rpm_residual",
+            ],
+            "rpm_unit": "rpm",
             "rate_policy": (
                 "Rates are consecutive-observation differences; the first row of an "
                 "independent stream is assigned 0.0 unless a prior state is supplied."
@@ -194,9 +202,7 @@ class PhysicalAnomalyDetector:
             "timestamp",
             "asset_id",
             *BASE_FEATURE_COLUMNS,
-            "temperature_rate",
-            "vibration_rate",
-            "speed_rate",
+            *RATE_FEATURE_COLUMNS,
             "source",
             "is_anomaly",
             "anomaly_score",
@@ -301,7 +307,7 @@ class PhysicalAnomalyDetector:
         metadata_path = destination.with_suffix(".metadata.json")
         metadata_path.write_text(
             json.dumps(
-                {"sklearn_version": self.training_metadata["sklearn_version"]},
+                self.training_metadata,
                 indent=2,
             )
             + "\n",

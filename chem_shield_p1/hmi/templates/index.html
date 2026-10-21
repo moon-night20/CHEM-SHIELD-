@@ -28,13 +28,13 @@
         <div class="monitor-heading"><div><p class="eyebrow">SCADA PROCESS MONITOR / M-01</p><h2>Virtual machine line</h2></div><div class="flow-state"><span class="machine-condition normal" id="machine-condition" title="Current sensor readings compared with configured upper limits">NORMAL</span><span class="state-badge stopped" id="state-badge"><span class="state-light"></span><span id="state-label">STOPPED</span></span><span class="trend-window" id="trend-window">0 RECORDS</span></div></div>
         <p class="machine-condition-details" id="machine-condition-details" aria-live="polite" hidden></p>
         <section class="monitor-body">
-          <div class="focus-panel"><p class="eyebrow">FOCUSED READOUT</p><div class="focus-tabs"><button class="focus-tab selected" data-focus="temperature">TEMPERATURE</button><button class="focus-tab" data-focus="speed">SPEED</button><button class="focus-tab" data-focus="pressure">PRESSURE</button><button class="focus-tab" data-focus="power">POWER</button></div><div class="focus-value"><span id="focus-label">TEMPERATURE</span><strong id="focus-value">--</strong><small id="focus-unit">°C</small></div><div class="focus-meta"><span>Target <b id="focus-target">--</b></span><span>Status <b id="focus-status">WAITING</b></span></div></div>
+          <div class="focus-panel"><p class="eyebrow">FOCUSED READOUT</p><div class="focus-tabs"><button class="focus-tab selected" data-focus="temperature">TEMPERATURE</button><button class="focus-tab" data-focus="speed">SPEED</button><button class="focus-tab" data-focus="pressure">PRESSURE</button><button class="focus-tab" data-focus="power">POWER</button></div><div class="focus-value"><span id="focus-label">TEMPERATURE</span><strong id="focus-value">--</strong><small id="focus-unit">°C</small></div><div class="focus-meta"><span>Mode <b id="focus-target">AUTO</b></span><span>Status <b id="focus-status">WAITING</b></span></div></div>
           <div class="history-panel"><div class="history-heading"><div><p class="eyebrow">LIVE QUEUE / BOTTOM → TOP</p><h3>Process history</h3></div><span class="history-hint">SCROLL FOR OLDER RECORDS</span></div><div class="history-window" id="history-window"><div class="sequence-list" id="sequence-list"><div class="chart-empty">Waiting for the first one-second process record...</div></div></div></div>
         </section>
       </section>
       <section class="control-panel panel">
         <div class="control-title"><p class="eyebrow">OPERATOR CONTROL</p><strong id="command-state">STOPPED</strong><span class="control-note" id="command-feedback">PLC-01 LOCAL</span></div>
-        <div class="target-inline"><label for="target-input">TARGET</label><div class="target-entry"><input id="target-input" type="number" min="0" max="3000" value="1500"><span>RPM</span></div><input class="range-input" id="target-range" type="range" min="0" max="3000" value="1500" step="50" aria-label="Target speed slider"></div>
+        <div class="target-inline"><label for="target-input">TARGET</label><div class="target-entry"><input id="target-input" type="number" min="0" max="1450" value="1400"><span>RPM</span></div><input class="range-input" id="target-range" type="range" min="0" max="1450" value="1400" step="50" aria-label="Target speed slider"></div>
         <div class="motor-actions"><button class="stop-button" data-action="stop"><span>■</span> STOP</button><button class="pause-button" data-action="pause"><span>Ⅱ</span> PAUSE</button><button class="start-button" data-action="start"><span>▶</span> START</button></div>
         <div class="secondary-actions"><button class="apply-button" id="apply-setpoint">APPLY TARGET</button><div class="test-inline"><label for="event-type">TEST EVENT GENERATOR</label><select id="event-type"><option value="rpm_deviation">RPM DEVIATION</option><option value="temperature_increase">TEMPERATURE</option><option value="pressure_spike">PRESSURE SPIKE</option><option value="sensor_inconsistency">SENSOR CHECK</option></select><input id="event-value" type="number" value="1800" aria-label="Test event value"><button id="event-button">INJECT EVENT</button></div></div>
         <span class="control-note" id="event-feedback">LAB TEST READY</span>
@@ -46,6 +46,7 @@
     <p class="eyebrow">OPERATOR ATTENTION REQUIRED</p>
     <h2 id="risk-alert-title">HIGH RISK INCIDENT</h2>
     <p id="risk-alert-message"></p>
+    <p id="risk-alert-trigger" class="risk-alert-trigger"></p>
     <p id="risk-alert-p6-message" class="p6-response-note"></p>
     <div class="risk-alert-actions"><button id="risk-alert-sim-stop" hidden>CONFIRM SIMULATED STOP</button><button id="risk-alert-ack">ACKNOWLEDGE</button><button id="risk-alert-close">CLOSE</button></div>
   </dialog>

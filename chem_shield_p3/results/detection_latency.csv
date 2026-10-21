@@ -1,4 +1,7 @@
-scenario,anomaly_onset_timestamp,first_detection_timestamp,detection_delay_samples,detected
-sudden_change,101,102,1,True
-unstable_behavior,131,132,1,True
-gradual_deviation,161,162,1,True
+scenario,anomaly_onset_timestamp,first_detection_timestamp,detection_delay_samples,detection_delay_seconds,detected
+sudden_change,7201,,,,False
+unstable_behavior,7231,7235,4,2.0,True
+gradual_deviation,7261,7295,34,17.0,True
+heavy_sensor_noise,7301,7302,1,0.5,True
+slow_gradual_drift,7341,7342,1,0.5,True
+stealthy_in_range,7381,7381,0,0.0,True

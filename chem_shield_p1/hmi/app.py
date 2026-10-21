@@ -16,6 +16,7 @@ from flask import Flask, jsonify, render_template, request
 from chem_shield_p1.communication.device_connection import DeviceConnection
 from chem_shield_p1.data.store import TelemetryStore
 from chem_shield_p1.events.abnormal_events import write_event
+from chem_shield_common.incident_warnings import incident_warning_details
 from chem_shield_p1.process.modbus_server import DEFAULT_PLC_PORT
 from chem_shield_p4.correlation.incident_store import IncidentStore
 from chem_shield_p4.correlation.risk_pipeline import RiskPipeline
@@ -52,6 +53,13 @@ def _machine_limit_alerts(state, limits):
                 "message": f"{sensor} {value:g} {unit} exceeds the {threshold:g} {unit} upper limit",
             })
     return alerts
+
+
+def _with_warning_details(incident):
+    return {
+        **incident,
+        "warning_details": incident_warning_details(incident),
+    }
 
 
 def _admin_url() -> str:
@@ -140,10 +148,6 @@ def create_app(
                 **current,
                 "machine_condition": "CRITICAL" if alerts else "NORMAL",
                 "limit_alerts": alerts,
-                "limits": {
-                    name: {"high": machine_limits.get(name, {}).get("high")}
-                    for name in ("temperature", "pressure", "power", "speed")
-                },
             })
         except (ConnectionError, RuntimeError) as error:
             return jsonify({"error": str(error)}), 503
@@ -222,9 +226,12 @@ def create_app(
             return jsonify({
                 "risk_level": highest["risk_level"] if highest else "UNASSESSED",
                 "risk_score": highest["risk_score"] if highest else None,
-                "incident": highest,
-                "active_incidents": active,
-                "recent_incidents": incident_store.list_incidents(limit=20),
+                "incident": _with_warning_details(highest) if highest else None,
+                "active_incidents": [_with_warning_details(item) for item in active],
+                "recent_incidents": [
+                    _with_warning_details(item)
+                    for item in incident_store.list_incidents(limit=20)
+                ],
                 "input_status": input_status,
                 "last_received_at": last_received,
                 "accepted_count": ingest_state["accepted_count"],
@@ -241,7 +248,12 @@ def create_app(
         try:
             limit = min(100, max(1, int(request.args.get("limit", 50))))
             active_only = request.args.get("active", "false").lower() in ("true", "1")
-            return jsonify({"incidents": incident_store.list_incidents(limit, active_only)})
+            return jsonify({
+                "incidents": [
+                    _with_warning_details(item)
+                    for item in incident_store.list_incidents(limit, active_only)
+                ]
+            })
         except (ValueError, sqlite3.Error) as error:
             app.logger.exception("Incident history is unavailable")
             return jsonify({"error": str(error)}), 400 if isinstance(error, ValueError) else 503
@@ -252,7 +264,7 @@ def create_app(
             incident = incident_store.get_incident(incident_id)
             if incident is None:
                 return jsonify({"error": "Incident not found."}), 404
-            return jsonify(incident)
+            return jsonify(_with_warning_details(incident))
         except sqlite3.Error as error:
             app.logger.exception("Incident details are unavailable")
             return jsonify({"error": str(error)}), 503
@@ -267,7 +279,7 @@ def create_app(
             incident = incident_store.acknowledge(incident_id, acknowledged_by.strip())
             if incident is None:
                 return jsonify({"error": "Active incident not found."}), 404
-            return jsonify(incident)
+            return jsonify(_with_warning_details(incident))
         except sqlite3.Error as error:
             app.logger.exception("Incident acknowledgement failed")
             return jsonify({"error": str(error)}), 503
@@ -354,7 +366,7 @@ def create_app(
         nonlocal paused
         payload = request.get_json(silent=True) or {}
         try:
-            target = max(0, min(3000, int(payload.get("target_rpm", 1500))))
+            target = max(0, min(1450, int(payload.get("target_rpm", 1400))))
             current = plc_call(read_state)
             action = payload.get("action")
             if action == "pause":

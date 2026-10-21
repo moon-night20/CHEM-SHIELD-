@@ -1,3 +1,47 @@
 {
-  "sklearn_version": "1.6.1"
+  "artifact_version": 2,
+  "model": "IsolationForest",
+  "sklearn_version": "1.6.1",
+  "trained_at_utc": "2026-10-21T17:34:05.250556+00:00",
+  "training_rows": 6000,
+  "feature_columns": [
+    "rpm",
+    "temperature",
+    "pressure",
+    "power",
+    "rpm_rate",
+    "temperature_rate",
+    "pressure_rate",
+    "power_rate",
+    "power_rpm_residual",
+    "temperature_power_residual",
+    "pressure_rpm_residual"
+  ],
+  "training_sensor_columns": [
+    "rpm",
+    "temperature",
+    "pressure",
+    "power"
+  ],
+  "physics_feature_columns": [
+    "power_rpm_residual",
+    "temperature_power_residual",
+    "pressure_rpm_residual"
+  ],
+  "rpm_unit": "rpm",
+  "rate_policy": "Rates are consecutive-observation differences; the first row of an independent stream is assigned 0.0 unless a prior state is supplied.",
+  "missing_value_policy": "Numeric process values are linearly interpolated within a batch; edge gaps use the nearest observed value.",
+  "score_calibration": "anomaly_score applies a smooth sigmoid mapping around the native Isolation Forest decision boundary to avoid score saturation at 1.0.",
+  "training_data_source": "P1 ProcessUnit simulator with start/stop transitions and multiple RPM targets",
+  "training_rpm_targets": [
+    0,
+    250,
+    350,
+    500,
+    750,
+    900,
+    1200,
+    1300,
+    1450
+  ]
 }

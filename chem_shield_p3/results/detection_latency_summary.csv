@@ -1,2 +1,2 @@
 anomalous_scenarios,detected_scenarios,missed_scenarios,mean_detection_delay_samples,median_detection_delay_samples,max_detection_delay_samples
-3,3,0,1.0,1.0,1
+6,5,1,8.0,1.0,34

@@ -9,11 +9,11 @@ MAX_SIMULATED_TEMPERATURE_C = 70.0
 MAX_SIMULATED_PRESSURE_BAR = 4.0
 MAX_SIMULATED_POWER_KW = 12.0
 MAX_SIMULATED_SPEED_RPM = 1500.0
-NORMAL_TEMPERATURE_CEILING = MAX_SIMULATED_TEMPERATURE_C - 0.01
-NORMAL_PRESSURE_CEILING = MAX_SIMULATED_PRESSURE_BAR - 0.01
-NORMAL_POWER_CEILING = MAX_SIMULATED_POWER_KW - 0.01
-NORMAL_SPEED_CEILING = MAX_SIMULATED_SPEED_RPM - 1.0
-NORMAL_SPEED_SETPOINT_RATIO = 0.99
+NORMAL_TEMPERATURE_CEILING = 68.9
+NORMAL_PRESSURE_CEILING = 3.95
+NORMAL_POWER_CEILING = 11.9
+NORMAL_SPEED_CEILING = 1490.0
+NORMAL_SPEED_SETPOINT_RATIO = 0.96
 
 
 @dataclass
@@ -43,8 +43,8 @@ class ProcessUnit:
         self.state.rpm += (target_rpm - self.state.rpm) * response
 
         load = self.state.rpm / 1500.0
-        target_temperature = 20.0 + 48.0 * min(load, 1.5)
-        target_pressure = 1.0 + 2.95 * min(load, 1.5)
+        target_temperature = 20.0 + 47.0 * min(load, 1.5)
+        target_pressure = 1.0 + 2.8 * min(load, 1.5)
         target_power = 0.2 + 11.6 * min(load, 1.5)
         thermal_response = min(1.0, dt / 18.0)
         self.state.temperature += (target_temperature - self.state.temperature) * thermal_response
@@ -58,14 +58,14 @@ class ProcessUnit:
         )
         self.state.temperature = min(
             NORMAL_TEMPERATURE_CEILING,
-            max(20.0, self.state.temperature + self._random.gauss(0, 0.25)),
+            max(20.0, self.state.temperature + self._random.gauss(0, 0.35)),
         )
         self.state.pressure = min(
             NORMAL_PRESSURE_CEILING,
-            max(0.0, self.state.pressure + self._random.gauss(0, 0.02)),
+            max(0.0, self.state.pressure + self._random.gauss(0, 0.09)),
         )
         self.state.power = min(
             NORMAL_POWER_CEILING,
-            max(0.0, self.state.power + self._random.gauss(0, 0.25)),
+            max(0.0, self.state.power + self._random.gauss(0, 0.15)),
         )
         return self.state

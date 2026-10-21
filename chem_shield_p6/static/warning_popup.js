@@ -7,7 +7,6 @@
   const seenEvents = new Set();
   const seenRisks = new Set();
   let eventsPrimed = false;
-  let risksPrimed = false;
   let currentMachineWarning = null;
 
   function showWarning(level, title, detail) {
@@ -89,17 +88,23 @@
       seenRisks.add(key);
       fresh.push(incident);
     }
-    if (!risksPrimed) {
-      risksPrimed = true;
-      return;
-    }
     for (const incident of fresh.slice(0, 3)) {
       const level = incident.risk_level.toLowerCase();
       const score = Number(incident.risk_score);
+      const scoreText = incident.risk_score == null || !Number.isFinite(score)
+        ? 'unavailable'
+        : score.toFixed(2);
+      const warning = (incident.warning_details || [])[0];
+      const time = warning?.timestamp
+        ? new Date(warning.timestamp).toLocaleString()
+        : 'Time unavailable';
+      const detail = warning
+        ? `${warning.trigger || 'Detector'} · ${warning.comparison || 'Numeric limit unavailable'} · ${time}${warning.message ? ` · ${warning.message}` : ''}`
+        : `Trigger details unavailable · ${new Date(incident.start_time).toLocaleString()}`;
       showWarning(
         level,
         `${incident.risk_level} RISK on ${incident.asset_id}`,
-        `Detector risk score ${Number.isFinite(score) ? score.toFixed(2) : 'unavailable'}. Review the incident.`,
+        `${detail} · risk score ${scoreText}. Review the incident.`,
       );
     }
   }

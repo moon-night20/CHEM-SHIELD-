@@ -10,6 +10,7 @@ import pandas as pd
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
 
 from chem_shield_p3.src.detector import PhysicalAnomalyDetector
+from chem_shield_p3.src.features import FEATURE_COLUMNS
 from chem_shield_p3.src.io_utils import DATA_DIR, DEFAULT_MODEL_PATH, RESULTS_DIR, read_telemetry_csv, write_csv
 
 
@@ -28,9 +29,13 @@ def _safe_rate(numerator: int, denominator: int) -> float:
 
 def calculate_evaluation(
     events: pd.DataFrame,
+    *,
+    sample_interval_seconds: float = 0.5,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Derive overall metrics, confusion matrix, scenario rates, latency, and errors."""
 
+    if not np.isfinite(sample_interval_seconds) or sample_interval_seconds <= 0:
+        raise ValueError("sample_interval_seconds must be positive and finite")
     actual = _validate_labels(events)
     predicted = events["is_anomaly"].astype(bool).astype(int)
     events["actual_label"] = actual
@@ -82,6 +87,15 @@ def calculate_evaluation(
                 "normal_samples": normal_samples,
                 "false_positives": false_positives,
                 "false_positive_rate": _safe_rate(false_positives, normal_samples),
+                "normal_duration_hours": normal_samples * sample_interval_seconds / 3600.0,
+                "false_alarms_per_hour": (
+                    _safe_rate(
+                        false_positives * 3600,
+                        normal_samples * sample_interval_seconds,
+                    )
+                    if normal_samples
+                    else pd.NA
+                ),
                 "accuracy": _safe_rate(detected + true_negatives, len(subset)),
                 "precision": _safe_rate(detected, detected + false_positives),
                 "recall": _safe_rate(detected, anomalous),
@@ -116,9 +130,26 @@ def calculate_evaluation(
                     "detection_delay_samples": (
                         first_detection - onset if first_detection is not None else pd.NA
                     ),
+                    "detection_delay_seconds": (
+                        (first_detection - onset) * sample_interval_seconds
+                        if first_detection is not None
+                        else pd.NA
+                    ),
                     "detected": first_detection is not None,
                 }
             )
+
+    latency_frame = pd.DataFrame(latency_rows)
+    if not latency_frame.empty:
+        scenario_frame = pd.DataFrame(scenario_rows).merge(
+            latency_frame[
+                ["scenario", "detection_delay_samples", "detection_delay_seconds"]
+            ],
+            on="scenario",
+            how="left",
+        )
+    else:
+        scenario_frame = pd.DataFrame(scenario_rows)
 
     error_mask = events["actual_label"] != events["predicted_label"]
     errors = events.loc[error_mask].copy()
@@ -129,12 +160,7 @@ def calculate_evaluation(
         "timestamp",
         "asset_id",
         "scenario",
-        "motor_speed",
-        "temperature",
-        "vibration",
-        "temperature_rate",
-        "vibration_rate",
-        "speed_rate",
+        *FEATURE_COLUMNS,
         "is_anomaly",
         "anomaly_score",
         "actual_label",
@@ -142,7 +168,7 @@ def calculate_evaluation(
         "error_type",
     ]
     errors = errors.loc[:, [column for column in error_columns if column in errors.columns]]
-    return metrics, matrix, pd.DataFrame(scenario_rows), pd.DataFrame(latency_rows), errors
+    return metrics, matrix, scenario_frame, latency_frame, errors
 
 
 def summarize_detection_latency(latency: pd.DataFrame) -> pd.DataFrame:

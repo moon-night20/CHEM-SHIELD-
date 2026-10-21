@@ -102,6 +102,24 @@
         : `score ${Number(incident.risk_score).toFixed(3)}`;
       details.textContent = `${incident.status || "UNKNOWN"} · ${eventCount} event(s) · ${timestamp} · ${incidentScore}`;
       card.append(heading, details);
+      const warningDetails = Array.isArray(incident.warning_details)
+        ? incident.warning_details
+        : [];
+      warningDetails.slice(0, 3).forEach((warning) => {
+        const detail = document.createElement("p");
+        detail.className = "incident-warning-details";
+        const warningTime = warning.timestamp
+          ? new Date(warning.timestamp).toLocaleString()
+          : "Time unavailable";
+        detail.textContent = [
+          `${warning.asset_id || incident.asset_id}: ${warning.severity || incident.risk_level}`,
+          warning.trigger || "Detector",
+          warning.comparison || "Numeric limit unavailable",
+          warningTime,
+          warning.message || "",
+        ].filter(Boolean).join(" · ");
+        card.append(detail);
+      });
       incidents.appendChild(card);
     });
   };

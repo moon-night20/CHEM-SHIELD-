@@ -22,6 +22,7 @@ from werkzeug.security import check_password_hash
 
 from admin_part.detection.login_detector import failed_login_alerts
 from admin_part.incident_data import load_chain_incidents
+from chem_shield_common.incident_warnings import incident_warning_details
 from admin_part.machine_client import (
     DEFAULT_HMI_URL,
     MachineClient,
@@ -35,6 +36,7 @@ from admin_part.storage import (
     get_statuses,
     initialize,
     list_audit,
+    list_ot_audit,
     record_incident_action,
 )
 from admin_part.manage_users import ROLES
@@ -216,6 +218,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         WTF_CSRF_ENABLED=True,
         WTF_CSRF_TIME_LIMIT=3600,
         ADMIN_DB_PATH=BASE_DIR / "data" / "admin.db",
+        OT_DATABASE_PATH=REPO_ROOT / "chem_shield_p1" / "data" / "telemetry.db",
         USERS_FILE=BASE_DIR / "data" / "users.json",
         LOGIN_EVENTS_FILE=BASE_DIR / "data" / "events" / "login_events.jsonl",
         P4_OUTPUT_FILE=REPO_ROOT / "out" / "p4_incidents.json",
@@ -232,6 +235,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         )
 
     app.config["ADMIN_DB_PATH"] = Path(app.config["ADMIN_DB_PATH"])
+    app.config["OT_DATABASE_PATH"] = Path(app.config["OT_DATABASE_PATH"])
     app.config["USERS_FILE"] = Path(app.config["USERS_FILE"])
     app.config["LOGIN_EVENTS_FILE"] = Path(app.config["LOGIN_EVENTS_FILE"])
     app.config["P4_OUTPUT_FILE"] = Path(app.config["P4_OUTPUT_FILE"])
@@ -376,6 +380,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
                     "note": "",
                 })
             incident.setdefault("chain_events", [])
+            incident["warning_details"] = incident_warning_details(incident)
             p5_report = incident.get("p5", {})
             confirmation = p5_report.get("rule_confirmation")
             incident["rule_confirmation"] = confirmation if isinstance(confirmation, bool) else None
@@ -711,6 +716,22 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             username=user_filter,
             action=action_filter,
         )
+        ot_entries = list_ot_audit(app.config["OT_DATABASE_PATH"])
+        if user_filter:
+            ot_entries = [
+                entry for entry in ot_entries
+                if user_filter.casefold() in entry["username"].casefold()
+            ]
+        if action_filter:
+            ot_entries = [
+                entry for entry in ot_entries
+                if action_filter.casefold() in entry["action"].casefold()
+            ]
+        entries = sorted(
+            [*entries, *ot_entries],
+            key=lambda entry: entry["timestamp"],
+            reverse=True,
+        )[:500]
         return render_template(
             "audit.html",
             entries=entries,

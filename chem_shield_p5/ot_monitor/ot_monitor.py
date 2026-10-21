@@ -7,6 +7,8 @@ import csv
 import json
 import logging
 import math
+import os
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,14 +16,22 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 import pandas as pd
 from chem_shield_p3.src.detector import PhysicalAnomalyDetector
-from chem_shield_p3.src.features import map_telemetry_reading
+from chem_shield_p3.src.features import (
+    BASE_FEATURE_COLUMNS,
+    TelemetryValidationError,
+    map_telemetry_reading,
+)
 
 from chem_shield_common.publisher import DEFAULT_HMI_URL, publish_events
 from .event_normalizer import normalize_ot_event, rule_alert_to_event
 from .event_normalizer import to_part4_correlation_event
 from .rule_engine import RuleEngine
 from .sensor_validation import SensorValidator, parse_timestamp
-from .sqlite_adapter import read_telemetry_read_only, persist_ot_events
+from .sqlite_adapter import (
+    persist_ot_events,
+    read_telemetry_read_only,
+    read_telemetry_since,
+)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -30,6 +40,12 @@ DEFAULT_PHYSICAL_MODEL = (
     / "chem_shield_p3"
     / "models"
     / "isolation_forest.joblib"
+)
+DEFAULT_TELEMETRY_DATABASE = (
+    Path(__file__).resolve().parents[2]
+    / "chem_shield_p1"
+    / "data"
+    / "telemetry.db"
 )
 
 
@@ -79,6 +95,9 @@ class MonitorConfig:
             "low", "high", "temperature", "pressure", "speed",
             "minimum_speed_when_running", "maximum_speed_when_stopped",
             "window_samples", "minimum_samples", "history_size",
+            "minimum_rpm_increase", "maximum_power_change", "minimum_power",
+            "minimum_temperature_drop", "minimum_rpm_change",
+            "minimum_pressure_change", "duration_seconds", "tolerance",
         }
 
         def validate_rule_numbers(value: Any, path: str = "rules") -> None:
@@ -99,6 +118,16 @@ class MonitorConfig:
                         raise ValueError(f"{child_path} must be a positive integer")
 
         validate_rule_numbers(rules)
+        physics_rules = rules.get("physics_consistency", {})
+        frozen_sensor = physics_rules.get("frozen_sensor", {})
+        frozen_sensors = frozen_sensor.get("sensors", [])
+        if not isinstance(frozen_sensors, (list, tuple)) or any(
+            not isinstance(sensor, str) or not sensor.strip()
+            for sensor in frozen_sensors
+        ):
+            raise ValueError(
+                "rules.physics_consistency.frozen_sensor.sensors must be a list of sensor names"
+            )
         stale_after = data.get("stale_after_seconds")
         if stale_after is not None and (
             isinstance(stale_after, bool)
@@ -140,6 +169,7 @@ class OTMonitor:
         )
         self.rule_engine = RuleEngine(config.rules)
         self.model = model
+        self._model_previous_states: Dict[str, Dict[str, float]] = {}
 
     def process(
         self,
@@ -193,54 +223,86 @@ class OTMonitor:
                 events.append(rule_alert_to_event(reading, alert))
 
         if self.model is not None and valid_readings:
-            scorable_readings = [
-                reading for reading in valid_readings
-                if "vibration" in reading.measurements
-            ]
-            if len(scorable_readings) != len(valid_readings):
-                LOGGER.warning(
-                    "P3 physical model skipped %d reading(s) without vibration input",
-                    len(valid_readings) - len(scorable_readings),
-                )
-            if not scorable_readings:
-                return events
-            model_rows = pd.DataFrame([
-                {
-                    "timestamp": reading.timestamp.isoformat(),
-                    "asset_id": reading.asset_id,
-                    **map_telemetry_reading(reading.measurements),
-                }
-                for reading in scorable_readings
-            ])
-            scored = self.model.predict(model_rows)
-            if not isinstance(scored, pd.DataFrame):
-                raise RuntimeError("P3 detector returned a single event for a batch")
-            score_by_reading: dict[tuple[str, str], float] = {}
-            for reading, result in zip(
-                scorable_readings, scored.to_dict(orient="records")
-            ):
-                score = float(result["anomaly_score"])
-                score_by_reading[
-                    (reading.asset_id, reading.timestamp.isoformat(timespec="seconds"))
-                ] = score
-                if score >= self.config.model_anomaly_threshold:
+            model_rows_by_asset: Dict[str, List[tuple[Any, Dict[str, Any]]]] = {}
+            for reading in valid_readings:
+                measurements = map_telemetry_reading(reading.measurements)
+                missing = [
+                    column for column in BASE_FEATURE_COLUMNS
+                    if column not in measurements
+                ]
+                if missing:
+                    message = "P3 model cannot score reading; missing required channels: " + ", ".join(missing)
+                    LOGGER.warning("%s for asset %s", message, reading.asset_id)
                     events.append(normalize_ot_event(
                         reading=reading,
-                        event_type="process_multivariable_anomaly",
-                        severity=self.config.model_anomaly_severity,
-                        evidence={
-                            "message": "Physical telemetry deviates from the fitted normal baseline",
-                            "detection_method": "P3 PhysicalAnomalyDetector",
-                            "anomaly_score": result["anomaly_score"],
-                            "score_interpretation": "relative anomaly score; not a probability",
-                            "model_decision_score": result["model_decision_score"],
-                        },
-                        model={
-                            "name": "PhysicalAnomalyDetector",
-                            "version": self.model.training_metadata.get("artifact_version"),
-                            "feature_columns": self.model.feature_columns,
-                        },
+                        event_type="model_scoring_unavailable",
+                        severity="medium",
+                        evidence={"message": message, "missing_channels": missing},
+                        model={"name": "PhysicalAnomalyDetector"},
                     ))
+                    continue
+                model_rows_by_asset.setdefault(reading.asset_id, []).append((reading, {
+                    "timestamp": reading.timestamp.isoformat(),
+                    "asset_id": reading.asset_id,
+                    **measurements,
+                }))
+            if not model_rows_by_asset:
+                return events
+            score_by_reading: dict[tuple[str, str], float] = {}
+            for asset_id, reading_rows in model_rows_by_asset.items():
+                model_rows = [row for _, row in reading_rows]
+                try:
+                    scored = self.model.predict(
+                        pd.DataFrame(model_rows),
+                        previous_state=self._model_previous_states.get(asset_id),
+                    )
+                    if not isinstance(scored, pd.DataFrame):
+                        raise RuntimeError("P3 detector returned a single event for a batch")
+                except (KeyError, RuntimeError, TelemetryValidationError, TypeError, ValueError) as error:
+                    message = f"P3 model could not score telemetry: {error}"
+                    LOGGER.warning("%s for asset %s", message, asset_id)
+                    for reading, _ in reading_rows:
+                        events.append(normalize_ot_event(
+                            reading=reading,
+                            event_type="model_scoring_unavailable",
+                            severity="medium",
+                            evidence={"message": message},
+                            model={"name": "PhysicalAnomalyDetector"},
+                        ))
+                    continue
+
+                self._model_previous_states[asset_id] = {
+                    column: float(model_rows[-1][column])
+                    for column in BASE_FEATURE_COLUMNS
+                }
+                for (reading, _), result in zip(
+                    reading_rows, scored.to_dict(orient="records")
+                ):
+                    score = float(result["anomaly_score"])
+                    score_by_reading[
+                        (reading.asset_id, reading.timestamp.isoformat(timespec="seconds"))
+                    ] = score
+                    if score >= self.config.model_anomaly_threshold:
+                        events.append(normalize_ot_event(
+                            reading=reading,
+                            event_type="process_multivariable_anomaly",
+                            severity=self.config.model_anomaly_severity,
+                            evidence={
+                                "message": "Physical telemetry deviates from the fitted normal baseline",
+                                "detection_method": "P3 PhysicalAnomalyDetector",
+                                "anomaly_score": result["anomaly_score"],
+                                "configured_anomaly_threshold": (
+                                    self.config.model_anomaly_threshold
+                                ),
+                                "score_interpretation": "relative anomaly score; not a probability",
+                                "model_decision_score": result["model_decision_score"],
+                            },
+                            model={
+                                "name": "PhysicalAnomalyDetector",
+                                "version": self.model.training_metadata.get("artifact_version"),
+                                "feature_columns": self.model.feature_columns,
+                            },
+                        ))
             for event in events:
                 if event["event_type"] in {"sensor_data_invalid", "sensor_stale"}:
                     continue
@@ -256,7 +318,86 @@ class OTMonitor:
                 return parse_timestamp(record.get("timestamp")).isoformat()
             except (ValueError, AttributeError):
                 return "9999-12-31T23:59:59+00:00"
-        return "9999-12-31T23:59:59+00:00"
+
+
+class EventDebouncer:
+    """Limit repeated publication of a sustained alert for one asset and rule."""
+
+    def __init__(self, interval_seconds: float = 60.0) -> None:
+        if not math.isfinite(interval_seconds) or interval_seconds <= 0:
+            raise ValueError("debounce interval must be positive and finite")
+        self.interval_seconds = interval_seconds
+        self._last_published: Dict[tuple[str, str, str], float] = {}
+
+    def should_publish(self, event: Dict[str, Any], now: Optional[float] = None) -> bool:
+        moment = time.monotonic() if now is None else now
+        evidence = event.get("evidence") or {}
+        key = (
+            str(event.get("asset_id", "UNKNOWN")),
+            str(event.get("event_type", "unknown")),
+            str(event.get("rule_id") or evidence.get("sensor") or ""),
+        )
+        previous = self._last_published.get(key)
+        if previous is not None and moment - previous < self.interval_seconds:
+            return False
+        self._last_published[key] = moment
+        return True
+
+
+def follow_database(
+    database: str | Path,
+    config: MonitorConfig,
+    model: PhysicalAnomalyDetector,
+    *,
+    hmi_url: str = DEFAULT_HMI_URL,
+    poll_interval: float = 1.0,
+    debounce_seconds: float = 60.0,
+    max_cycles: Optional[int] = None,
+) -> int:
+    """Tail new P1 telemetry and publish debounced scored events to loopback HMI."""
+    if not math.isfinite(poll_interval) or poll_interval <= 0:
+        raise ValueError("poll interval must be positive and finite")
+    if max_cycles is not None and max_cycles < 1:
+        raise ValueError("max_cycles must be positive when specified")
+    if not os.environ.get("CHEM_SHIELD_INGEST_TOKEN", "").strip():
+        raise RuntimeError(
+            "Follow mode requires the HMI ingest token; export CHEM_SHIELD_INGEST_TOKEN "
+            "with the same value configured for the loopback HMI."
+        )
+
+    publisher = publish_events
+    publisher([], url=hmi_url)
+    monitor = OTMonitor(config, model)
+    debouncer = EventDebouncer(debounce_seconds)
+    last_id = 0
+    cycles = 0
+    while max_cycles is None or cycles < max_cycles:
+        records = read_telemetry_since(database, last_id)
+        cycles += 1
+        if records:
+            last_id = max(int(record["id"]) for record in records)
+            events = monitor.process(records)
+            publishable = [
+                to_part4_correlation_event(
+                    event,
+                    event["anomaly_score"],
+                    asset_id=config.risk_asset_id,
+                )
+                for event in events
+                if "anomaly_score" in event and debouncer.should_publish(event)
+            ]
+            if publishable:
+                result = publisher(publishable, url=hmi_url)
+                if result["failed_batches"] or result["rejected"]:
+                    LOGGER.warning("Follow-mode HMI publish result: %s", result)
+                else:
+                    LOGGER.info(
+                        "Follow mode published %d scored event(s) to the local HMI",
+                        result["accepted"],
+                    )
+        if max_cycles is None or cycles < max_cycles:
+            time.sleep(poll_interval)
+    return last_id
 
 
 def _read_csv(path: str | Path, sensor_names: Dict[str, str]) -> List[Dict[str, Any]]:
@@ -282,9 +423,26 @@ def _load_config(path: str | Path) -> MonitorConfig:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     root = Path(__file__).resolve().parent
     parser = argparse.ArgumentParser(description="Read-only CHEM-SHIELD physical telemetry monitor")
-    source = parser.add_mutually_exclusive_group(required=True)
+    source = parser.add_mutually_exclusive_group()
     source.add_argument("--csv", help="Read telemetry from CSV")
     source.add_argument("--database", help="Read existing Part 1 SQLite telemetry database in read-only mode")
+    parser.add_argument(
+        "--follow",
+        action="store_true",
+        help="Continuously tail the default or specified Part 1 telemetry database and publish alerts",
+    )
+    parser.add_argument(
+        "--poll-interval",
+        type=float,
+        default=1.0,
+        help="Seconds between SQLite tail checks in --follow mode (default: 1)",
+    )
+    parser.add_argument(
+        "--debounce-seconds",
+        type=float,
+        default=60.0,
+        help="Minimum seconds between repeated publications of the same asset/rule alert",
+    )
     parser.add_argument("--config", default=str(root / "config.example.json"))
     parser.add_argument(
         "--model",
@@ -304,6 +462,25 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         help=f"Loopback Part 1 HMI risk endpoint (default: {DEFAULT_HMI_URL})",
     )
     args = parser.parse_args(argv)
+
+    if args.follow:
+        if args.csv:
+            parser.error("--follow cannot be combined with --csv")
+        if args.persist or args.output or args.publish:
+            parser.error("--follow publishes scored events automatically; omit batch-only options")
+        config = _load_config(args.config)
+        model = PhysicalAnomalyDetector.load(args.model)
+        follow_database(
+            args.database or DEFAULT_TELEMETRY_DATABASE,
+            config,
+            model,
+            hmi_url=args.hmi_url,
+            poll_interval=args.poll_interval,
+            debounce_seconds=args.debounce_seconds,
+        )
+        return 0
+    if not args.csv and not args.database:
+        parser.error("provide --csv or --database, or use --follow")
 
     config = _load_config(args.config)
     model = PhysicalAnomalyDetector.load(args.model)

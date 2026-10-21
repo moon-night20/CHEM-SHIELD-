@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
-from threading import Lock
+import asyncio
+from collections.abc import Callable
+import ipaddress
+import logging
+from queue import Full, Queue
+from threading import Lock, Thread
 
 from pymodbus.datastore import ModbusSequentialDataBlock, ModbusServerContext, ModbusSlaveContext
-from pymodbus.server import StartTcpServer
+from pymodbus.server.async_io import ModbusServerRequestHandler, ModbusTcpServer
 
+from chem_shield_common.publisher import publish_events
 from chem_shield_p1.plc.register_map import (
     ACTUAL_RPM,
     MOTOR_COMMAND,
@@ -21,9 +27,11 @@ from chem_shield_p1.plc.register_map import (
     encode_pressure,
     encode_temperature,
 )
+from chem_shield_p2.modbus_write_monitor import ModbusTcpWriteMonitor
 
 DEFAULT_PLC_HOST = "127.0.0.1"
 DEFAULT_PLC_PORT = 15020
+LOGGER = logging.getLogger(__name__)
 
 
 class ProcessRegisterBank:
@@ -32,7 +40,7 @@ class ProcessRegisterBank:
     def __init__(self) -> None:
         self._lock = Lock()
         self.values = [0] * REGISTER_COUNT
-        self.values[TARGET_RPM] = 1500
+        self.values[TARGET_RPM] = 1400
 
     def read_commands(self) -> tuple[bool, float]:
         with self._lock:
@@ -76,9 +84,89 @@ def create_context(bank: ProcessRegisterBank) -> ModbusServerContext:
     return ModbusServerContext(slaves=store, single=True)
 
 
+class _LocalEventPublisher:
+    """Publish monitor events off the Modbus request path."""
+
+    def __init__(self) -> None:
+        self._events: Queue[dict] = Queue(maxsize=1000)
+        self._worker = Thread(
+            target=self._publish_loop,
+            name="modbus-event-publisher",
+            daemon=True,
+        )
+        self._worker.start()
+
+    def submit(self, event: dict) -> None:
+        try:
+            self._events.put_nowait(event)
+        except Full:
+            LOGGER.error(
+                "Local Modbus event queue is full; event %s was not queued",
+                event["event_id"],
+            )
+
+    def _publish_loop(self) -> None:
+        while True:
+            event = self._events.get()
+            try:
+                result = publish_events([event])
+                if result["failed_batches"] or result["rejected"]:
+                    LOGGER.warning("Modbus monitor HMI publish result: %s", result)
+            except (TypeError, ValueError, OSError):
+                LOGGER.exception("Could not publish Modbus monitor event %s", event["event_id"])
+            finally:
+                self._events.task_done()
+
+
+class _MonitoredRequestHandler(ModbusServerRequestHandler):
+    def execute(self, request, *addr):
+        peer = self.transport.get_extra_info("peername") if self.transport else None
+        source_address = peer[0] if peer else "unknown"
+        self.server.write_monitor.inspect(request, source_address)
+        super().execute(request, *addr)
+
+
+class MonitoredModbusTcpServer(ModbusTcpServer):
+    """Virtual PLC server with a passive decoded-request observation hook."""
+
+    def __init__(
+        self,
+        context,
+        address,
+        write_monitor: ModbusTcpWriteMonitor,
+        event_sink: Callable[[dict], None],
+    ) -> None:
+        self.write_monitor = write_monitor
+        self.event_sink = event_sink
+        self.write_monitor.event_sink = self.event_sink
+        super().__init__(context, address=address)
+
+    def callback_new_connection(self):
+        return _MonitoredRequestHandler(self)
+
+
 def serve(
     bank: ProcessRegisterBank,
     host: str = DEFAULT_PLC_HOST,
     port: int = DEFAULT_PLC_PORT,
 ) -> None:
-    StartTcpServer(create_context(bank), address=(host, port))
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError as error:
+        raise ValueError("virtual PLC must bind to loopback address 127.0.0.1") from error
+    if address != ipaddress.ip_address(DEFAULT_PLC_HOST):
+        raise ValueError("virtual PLC must bind to loopback address 127.0.0.1")
+
+    publisher = _LocalEventPublisher()
+    monitor = ModbusTcpWriteMonitor()
+
+    async def run_server() -> None:
+        server = MonitoredModbusTcpServer(
+            create_context(bank),
+            address=(DEFAULT_PLC_HOST, port),
+            write_monitor=monitor,
+            event_sink=publisher.submit,
+        )
+        await server.serve_forever()
+
+    asyncio.run(run_server())

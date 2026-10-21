@@ -52,11 +52,11 @@ def main() -> None:
 
     # Plot 1: observed motor speed and the model's physical anomaly decisions.
     figure, axis = plt.subplots(figsize=(10, 5))
-    axis.plot(predictions["timestamp"], predictions["motor_speed"], color="0.65", label="Telemetry")
+    axis.plot(predictions["timestamp"], predictions["rpm"], color="0.65", label="Telemetry")
     anomalies = predictions[predictions["is_anomaly"].astype(bool)]
     axis.scatter(
         anomalies["timestamp"],
-        anomalies["motor_speed"],
+        anomalies["rpm"],
         color="tab:red",
         s=20,
         label="Physical anomaly detected",

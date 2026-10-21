@@ -1,0 +1,4 @@
+scenario,total_samples,anomalous_samples,detected_anomalous_samples,detection_rate,normal_samples,false_positives,false_positive_rate,normal_duration_hours,false_alarms_per_hour,accuracy,precision,recall,f1_score,true_positives,true_negatives,false_negatives,detection_delay_samples,detection_delay_seconds
+normal,7200,0,0,0.0,7200,339,0.04708333333333333,1.0,339.0,0.9529166666666666,0.0,0.0,0.0,0,6861,0,,
+slow_gradual_drift,40,40,3,0.075,0,0,0.0,0.0,,0.075,1.0,0.075,0.13953488372093023,3,0,37,1.0,0.5
+stealthy_in_range,40,40,35,0.875,0,0,0.0,0.0,,0.875,1.0,0.875,0.9333333333333333,35,0,5,0.0,0.0

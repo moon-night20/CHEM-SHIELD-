@@ -315,6 +315,57 @@ a {
   overflow-x: auto;
 }
 
+.audit-panel {
+  overflow: hidden;
+}
+
+.audit-table {
+  min-width: 850px;
+  table-layout: fixed;
+}
+
+.audit-time-column { width: 14%; }
+.audit-user-column { width: 17%; }
+.audit-action-column { width: 17%; }
+.audit-incident-column { width: 17%; }
+.audit-details-column { width: 35%; }
+
+.audit-table th,
+.audit-table td {
+  overflow-wrap: anywhere;
+}
+
+.audit-table td:first-child {
+  white-space: nowrap;
+}
+
+.audit-summary-cell > span {
+  display: block;
+  line-height: 1.5;
+}
+
+.audit-details {
+  margin-top: 8px;
+  color: #a9bacd;
+}
+
+.audit-details summary {
+  width: fit-content;
+  color: #58d4e5;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.audit-details p {
+  margin: 8px 0 4px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.audit-details small {
+  color: #8295ac;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -737,6 +788,12 @@ textarea {
   margin: 5px 0 0;
   color: #a9bacd;
   font-size: .84rem;
+}
+
+.incident-warning-details {
+  margin: 6px 0;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
 }
 
 .live-readings span, .live-readings strong {

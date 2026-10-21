@@ -257,4 +257,5 @@ footer { display:none; }
 .risk-alert-actions #risk-alert-sim-stop { border-color:#a65336; color:#ffc3a0; }
 .risk-alert-actions #risk-alert-sim-stop:hover { border-color:#ff8c5c; color:#fff0e7; }
 .risk-alert-actions #risk-alert-sim-stop[hidden] { display:none; }
+.risk-alert-dialog .risk-alert-trigger { padding:10px 12px; border-left:3px solid var(--amber); background:#211b10; overflow-wrap:anywhere; }
 .p6-response-note { padding:10px 12px; border-left:2px solid var(--amber); background:#211b10; font-size:12px; }

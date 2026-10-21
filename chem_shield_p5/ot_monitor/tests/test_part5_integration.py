@@ -35,7 +35,7 @@ class Part5IntegrationTests(unittest.TestCase):
             "asset_id": "M-01",
             "temperature": 95,
             "pressure": 2.4,
-            "speed": 1200,
+            "rpm": 1200,
             "operating_state": "RUNNING",
             "measurement_origin": "synthetic_test",
         }])[0]
@@ -71,7 +71,7 @@ class Part5IntegrationTests(unittest.TestCase):
             ("temperature", 70, "temperature_high"),
             ("pressure", 4, "pressure_high"),
             ("power", 12, "power_high"),
-            ("speed", 1500, "speed_high"),
+            ("rpm", 1500, "speed_high"),
         )
         normal_reading = {
             "timestamp": "2026-10-14T09:30:00Z",
@@ -79,7 +79,7 @@ class Part5IntegrationTests(unittest.TestCase):
             "temperature": 25,
             "pressure": 2,
             "power": 6,
-            "speed": 500,
+            "rpm": 500,
             "operating_state": "RUNNING",
             "measurement_origin": "synthetic_test",
         }

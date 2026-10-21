@@ -20,6 +20,7 @@ from chem_shield_p1.plc.register_map import (
     SIM_TEMPERATURE,
 )
 from chem_shield_p1.process.main import apply_simulation_overrides
+from chem_shield_p1.hmi.app import create_app as create_hmi_app
 from the_attack.app import PARAMETERS, create_app
 
 
@@ -112,6 +113,34 @@ def test_temperature_override_waits_for_measurement(console):
     assert body["observed_value"] is None
     assert plc.registers[SIM_OVERRIDE_MASK] & OVERRIDE_TEMPERATURE
     assert plc.registers[SIM_TEMPERATURE] == 10000
+
+
+def test_command_reconnects_after_stale_plc_connection(console):
+    app, client, plc = console
+    add_telemetry(app, temperature=20.0)
+    attempts = 0
+
+    def fail_once_then_run(action):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise BrokenPipeError("stale PLC socket")
+        return action(plc)
+
+    with (
+        patch.object(DeviceConnection, "call", side_effect=fail_once_then_run),
+        patch.object(DeviceConnection, "reconnect", return_value={"status": "CONNECTED"}) as reconnect,
+    ):
+        response = client.post(
+            "/api/commands",
+            json={"parameter": "temperature", "value": 55},
+        )
+
+    assert response.status_code == 202
+    assert plc.registers[SIM_OVERRIDE_MASK] & OVERRIDE_TEMPERATURE
+    assert plc.registers[SIM_TEMPERATURE] == 5500
+    reconnect.assert_called_once()
+    assert attempts == 2
 
 
 def test_direct_value_overrides_are_applied_to_simulator_state():
@@ -233,7 +262,7 @@ def test_speed_override_is_not_reported_as_observed_until_new_telemetry(console)
     assert history[0]["observed_value"] is None
 
 
-def test_later_abnormal_telemetry_records_warning_and_keeps_requested_value_separate(console):
+def test_later_abnormal_telemetry_records_warning_and_publishes_risk_incident(console):
     app, client, _plc = console
     add_telemetry(app, temperature=20.0)
     accepted = client.post(
@@ -243,8 +272,33 @@ def test_later_abnormal_telemetry_records_warning_and_keeps_requested_value_sepa
     assert accepted.status_code == 202
 
     add_telemetry(app, temperature=86.5)
-    dashboard = client.get("/api/dashboard").get_json()
-    history = client.get("/api/commands").get_json()["commands"]
+    hmi = create_hmi_app(
+        plc_host="127.0.0.1",
+        plc_port=1,
+        database=str(app.extensions["ot_console_commands"].path),
+    )
+    hmi.config.update(TESTING=True)
+    hmi_client = hmi.test_client()
+    published = []
+
+    def capture(events):
+        published.extend(events)
+        response = hmi_client.post(
+            "/api/risk/events",
+            json={"events": events},
+            headers={"X-Ingest-Token": hmi.config["INGEST_TOKEN"]},
+        )
+        body = response.get_json()
+        return {
+            "accepted": body["accepted"],
+            "rejected": body["rejected"],
+            "failed_batches": 0 if response.status_code == 200 else 1,
+            "errors": body.get("errors", []),
+        }
+
+    with patch("the_attack.app.publish_events", side_effect=capture):
+        dashboard = client.get("/api/dashboard").get_json()
+        history = client.get("/api/commands").get_json()["commands"]
 
     assert dashboard["alerts"][0]["parameter"] == "temperature"
     assert history[0]["status"] == "observed"
@@ -252,6 +306,16 @@ def test_later_abnormal_telemetry_records_warning_and_keeps_requested_value_sepa
     assert history[0]["observed_value"] == 86.5
     assert history[0]["exceeded_limit"] == 1
     assert "exceeds the configured upper limit" in history[0]["warning"]
+    assert history[0]["incident_status"] == "Risk event saved to HMI incident register"
+    assert published[0]["event_type"] == "physical"
+    assert published[0]["source"] == "ot_command_console"
+    assert published[0]["anomaly_score"] == 1.0
+    assert published[0]["evidence"]["value"] == 86.5
+    assert published[0]["evidence"]["configured_threshold"] == 70
+    incidents = hmi_client.get("/api/incidents").get_json()["incidents"]
+    assert len(incidents) == 1
+    assert incidents[0]["risk_level"] == "HIGH"
+    assert incidents[0]["events"][0]["source"] == "ot_command_console"
     events = app.extensions["ot_console_telemetry"].recent_events()
     assert any(
         event["source"] == "OT_COMMAND_CONSOLE"

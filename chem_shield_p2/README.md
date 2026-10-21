@@ -2,17 +2,19 @@
 
 This folder is intentionally separate from the physical OT process model in
 Part 1. It is a passive, simulation-first analysis layer for network telemetry
-and Modbus-style traffic using sanitized fixtures. Publishing is an explicit
-opt-in and is limited to the Part 1 loopback HMI.
+and Modbus-style traffic using sanitized fixtures, plus decoded Modbus requests
+observed inside the loopback virtual PLC. Published events are limited to the
+Part 1 loopback HMI.
 
 P2 processes fixture or replayed Zeek, Suricata, and Modbus-monitor data only.
 It does **not** perform live packet capture.
 
 ## Scope and constraints
 
-- No live PLC writes or live OT connections.
+- No production PLC writes or production OT connections.
 - No active scanning or blocking.
-- Localhost-only or fixture-based data only.
+- The live write monitor is attached only to the simulated PLC bound at
+  `127.0.0.1:15020`; all other network data is fixture/replay input.
 - The Part 1 HTTP/HMI, SQLite telemetry schema, PLC simulation, and physical-process semantics remain unchanged.
 
 ## Relevant repository contracts
@@ -29,9 +31,12 @@ emits normalized events for offline analysis or optional local publication.
 
 P2 replays sanitized fixture records, normalizes them, scores them with
 `NetworkIsolationForest`, maps the simulated target to `PLC-01`, and converts
-them to Part 4 `event_type: "network"` events. With `--publish`, the shared
-publisher posts these events to the P1 HMI; it does not open network captures
-or connect to a PLC.
+them to Part 4 `event_type: "network"` events. Separately, the Part 1 virtual
+PLC observes its own decoded Modbus requests and flags unknown source
+addresses, unexpected registers, unusual write function codes, write bursts,
+and Attack Console simulation-override writes. Those events are sent
+asynchronously to the loopback HMI. This monitor does not capture packets,
+inject traffic, block requests, or connect to production equipment.
 
 ## Completed adapters (fixture-backed and tested)
 
@@ -72,7 +77,7 @@ These are explicitly not implemented in this patch and are not claimed as suppor
 - Live Zeek capture on Linux hosts.
 - Live Suricata daemon integration.
 - Direct ingest from industrial PLC networks or production SIEM systems.
-- Live Modbus monitoring over untrusted OT networks.
+- Live Modbus monitoring outside the loopback virtual PLC.
 - SQLite writes into the physical telemetry tables in `chem_shield_p1/data/store.py`.
 
 ## Offline replay and normalization
@@ -134,12 +139,15 @@ sudo apt-get update
 sudo apt-get install -y zeek suricata
 ```
 
-Those dependencies are optional here because the code remains fixture-driven and passive. The current implementation does not require Zeek or Suricata binaries.
+Those dependencies are optional here because Zeek and Suricata remain
+fixture-driven. The Modbus monitor is integrated with the local P1 virtual PLC
+and does not require packet-capture privileges or Zeek/Suricata binaries.
 
 ## Output and limitations
 
-- Scripts read JSON/JSONL fixtures offline; publication is disabled unless
-  `--publish` is passed.
+- Scripts read JSON/JSONL fixtures offline; fixture publication is disabled
+  unless `--publish` is passed. The virtual PLC publishes its monitor events
+  to the loopback HMI when it observes suspicious writes.
 - The publisher permits only `http://127.0.0.1` and sends no data to remote
   endpoints.
 - No unauthorized scans or production OT traffic are generated.

@@ -46,6 +46,18 @@ async function postJson(path, payload) {
   return data;
 }
 
+async function waitForCommand(commandId) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    await new Promise((resolve) => window.setTimeout(resolve, 500));
+    const response = await fetch("/api/commands", {headers: {"Accept": "application/json"}});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Could not check command status");
+    const command = data.commands.find((item) => item.id === commandId);
+    if (command && command.status !== "accepted") return command;
+  }
+  return null;
+}
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!form.reportValidity()) return;
@@ -60,6 +72,16 @@ form.addEventListener("submit", async (event) => {
     showResult(data.message);
     valueInput.value = "";
     valueInput.focus();
+    if (data.id) {
+      const command = await waitForCommand(data.id);
+      if (command && command.status === "observed") {
+        const incidentStatus = command.incident_status || "No risk incident linked";
+        showResult(
+          `Simulator observed ${command.observed_value} ${command.unit}. ${incidentStatus}`,
+          command.exceeded_limit === 1 && !incidentStatus.startsWith("Risk event saved"),
+        );
+      }
+    }
   } catch (error) {
     showResult(error.message, true);
   } finally {

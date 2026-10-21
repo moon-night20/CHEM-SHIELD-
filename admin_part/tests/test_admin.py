@@ -15,6 +15,10 @@ from werkzeug.security import generate_password_hash
 
 from admin_part.app import _safe_hmi_url, create_app, server_options
 from admin_part.manage_users import main as manage_users
+from chem_shield_p1.data.store import TelemetryStore
+from chem_shield_p4.correlation.incident_store import IncidentStore
+from chem_shield_p4.correlation.risk_pipeline import RiskPipeline
+from the_attack.app import CommandHistoryStore
 
 
 INCIDENT_ID = "INC-0001"
@@ -36,7 +40,16 @@ P4_SAMPLE = [{
             "event_id": "phys-1",
             "event_type": "physical",
             "source": "physical_ml",
-            "evidence": {"temperature": 90},
+            "timestamp": "2026-10-14T10:00:18Z",
+            "severity": "high",
+            "evidence": {
+                "sensor": "temperature",
+                "rule_id": "TEMPERATURE-HIGH",
+                "value": 90,
+                "unit": "degC",
+                "configured_threshold": 70,
+                "message": "temperature exceeded configured high limit",
+            },
         },
     ],
 }]
@@ -93,6 +106,7 @@ def setup_console(tmp_path: Path):
         "TESTING": True,
         "SECRET_KEY": "test-only-key",
         "ADMIN_DB_PATH": data_dir / "admin.db",
+        "OT_DATABASE_PATH": data_dir / "telemetry.db",
         "USERS_FILE": users_file,
         "LOGIN_EVENTS_FILE": data_dir / "events" / "login_events.jsonl",
         "P4_OUTPUT_FILE": p4_path,
@@ -147,6 +161,108 @@ def test_login_success_and_cookie_security(setup_console):
     assert "default-src 'self'" in response.headers["Content-Security-Policy"]
     audit = client.get("/audit")
     assert b"login_success" in audit.data
+
+
+def test_administrator_audit_includes_ot_commands_and_critical_events(setup_console):
+    app, client, data_dir, *_ = setup_console
+    database = data_dir / "telemetry.db"
+    telemetry = TelemetryStore(str(database))
+    telemetry.add_event({
+        "timestamp": "2026-10-21T18:00:00+00:00",
+        "source": "OT_COMMAND_CONSOLE",
+        "machine_id": "M-01",
+        "event_type": "temperature_high",
+        "parameter": "temperature",
+        "old_value": 70,
+        "new_value": 86.5,
+        "severity": "critical",
+    })
+    commands = CommandHistoryStore(database)
+    commands.record(
+        "ot-audit-command",
+        "2026-10-21T18:00:00+00:00",
+        1,
+        "temperature",
+        100,
+        "°C",
+        "observed",
+        "Accepted by the loopback virtual PLC",
+        "Risk event saved to HMI incident register",
+    )
+    risk = RiskPipeline(IncidentStore(database)).ingest([{
+        "event_id": "ot-audit-risk-event",
+        "timestamp": "2026-10-21T18:00:01+00:00",
+        "source": "ot_command_console",
+        "asset_id": "PLC-01",
+        "event_type": "physical",
+        "anomaly_score": 1.0,
+        "severity": "critical",
+        "evidence": {
+            "sensor": "temperature",
+            "value": 86.5,
+            "configured_threshold": 70,
+            "unit": "°C",
+            "message": "temperature exceeded configured limit",
+        },
+    }])
+    assert risk["accepted"] == 1
+
+    assert login(client, "admin", "Admin-password-123").status_code == 302
+    response = client.get("/audit")
+
+    assert response.status_code == 200
+    assert b"OT Command Console" in response.data
+    assert b"OT command \xc2\xb7 observed" in response.data
+    assert b"Risk event saved to HMI incident register" in response.data
+    assert b"OT alert \xc2\xb7 critical" in response.data
+    assert b"temperature_high" in response.data
+    assert b"Risk event \xc2\xb7 critical" in response.data
+    assert b"Temperature \xc2\xb7 86.5 \xc2\xb0C (limit 70 \xc2\xb0C)" in response.data
+    assert b"More details" in response.data
+    assert b"configured_threshold" not in response.data
+    assert b"ot-audit-risk-event" not in response.data
+    assert b"INC-" in response.data
+    assert app.config["OT_DATABASE_PATH"] == database
+
+
+def test_dashboard_counts_live_ot_risk_incidents(setup_console):
+    app, client, *_ = setup_console
+    app.extensions["machine_client"].responses["incidents"] = {
+        "ok": True,
+        "data": {
+            "incidents": [{
+                "incident_id": "INC-OT-001",
+                "asset_id": "PLC-01",
+                "risk_level": "HIGH",
+                "risk_score": 0.6,
+                "start_time": "2026-10-21T18:00:00Z",
+                "end_time": "2026-10-21T18:00:00Z",
+                "status": "ACTIVE",
+                "events": [{
+                    "event_type": "physical",
+                    "source": "ot_command_console",
+                    "timestamp": "2026-10-21T18:00:00Z",
+                    "severity": "critical",
+                    "evidence": {
+                        "sensor": "temperature",
+                        "value": 86.5,
+                        "configured_threshold": 70,
+                        "unit": "°C",
+                    },
+                }],
+            }]
+        },
+        "error": None,
+        "fetched_at": "2026-10-21T18:00:01Z",
+    }
+    assert login(client, "admin", "Admin-password-123").status_code == 302
+
+    response = client.get("/dashboard")
+
+    assert response.status_code == 200
+    assert b"HIGH-RISK INCIDENTS REQUIRE REVIEW" in response.data
+    assert b"INC-OT-001" in response.data
+    assert b">HIGH</span><strong>1</strong>" in response.data
 
 
 def test_login_unknown_and_wrong_password_have_same_message(setup_console):
@@ -211,6 +327,11 @@ def test_live_detector_risk_is_available_in_admin_incident_views(setup_console):
     for response in (dashboard, incident_register):
         assert b'data-live-risk-panel' in response.data
         assert b'PERSISTENT LIVE INCIDENT REGISTER' in response.data
+    assert b"Warning details" in dashboard.data
+    assert b"PLC-01" in dashboard.data
+    assert b"temperature / TEMPERATURE-HIGH" in dashboard.data
+    assert b"90 degC vs limit 70 degC" in dashboard.data
+    assert b"2026-10-14T10:00:18Z" in dashboard.data
 
 
 def test_operator_is_forbidden_from_actions_and_audit(setup_console):

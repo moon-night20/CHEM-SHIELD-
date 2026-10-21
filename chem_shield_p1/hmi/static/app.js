@@ -11,10 +11,10 @@ let riskRefreshPending = false;
 const p6ConfirmToken = document.querySelector('meta[name="p6-confirm-token"]').content;
 
 const focusConfig = {
-  temperature: {label: 'TEMPERATURE', unit: '°C', value: (state) => state.temperature, target: () => '70.0 °C'},
-  speed: {label: 'SPEED', unit: 'RPM', value: (state) => state.rpm, target: (state) => `${Math.round(state.target_rpm)} RPM`},
-  pressure: {label: 'PRESSURE', unit: 'bar', value: (state) => state.pressure, target: () => '4.00 bar'},
-  power: {label: 'POWER', unit: 'kW', value: (state) => state.power, target: () => '12.00 kW'},
+  temperature: {label: 'TEMPERATURE', unit: '°C', value: (state) => state.temperature, target: () => 'AUTO'},
+  speed: {label: 'SPEED', unit: 'RPM', value: (state) => state.rpm, target: (state) => `${Math.min(1450, Math.round(state.target_rpm))} RPM`},
+  pressure: {label: 'PRESSURE', unit: 'bar', value: (state) => state.pressure, target: () => 'AUTO'},
+  power: {label: 'POWER', unit: 'kW', value: (state) => state.power, target: () => 'AUTO'},
 };
 
 function formatFocusValue(focus, value) {
@@ -92,8 +92,9 @@ function setState(state) {
   $('state-label').textContent = state.motor_status;
   $('command-state').textContent = state.motor_status;
   $('state-badge').className = `state-badge ${running ? 'running' : state.motor_status === 'PAUSED' ? 'paused' : 'stopped'}`;
-  $('target-input').value = Math.round(state.target_rpm);
-  $('target-range').value = Math.round(state.target_rpm);
+  const targetRpm = Math.min(1450, Math.round(state.target_rpm));
+  $('target-input').value = targetRpm;
+  $('target-range').value = targetRpm;
   updateFocus(state);
   if (state.motor_status !== 'PAUSED') recordTrend(state);
 }
@@ -131,16 +132,31 @@ async function getJson(url, options) {
 }
 
 function maybeShowRiskAlert(summary) {
+  const riskRank = {MEDIUM: 1, HIGH: 2, CRITICAL: 3};
   const incident = (summary.active_incidents || [])
-    .filter((item) => !item.acknowledged && ['HIGH', 'CRITICAL'].includes(item.risk_level))
-    .sort((left, right) => (right.risk_score || 0) - (left.risk_score || 0))[0];
-  if (!incident || incident.acknowledged || !['HIGH', 'CRITICAL'].includes(incident.risk_level)) return;
+    .filter((item) => !item.acknowledged && item.risk_level in riskRank)
+    .sort((left, right) => (
+      riskRank[right.risk_level] - riskRank[left.risk_level]
+      || (right.risk_score || 0) - (left.risk_score || 0)
+    ))[0];
+  if (!incident) return;
   const key = `${incident.incident_id}:${incident.risk_level}`;
   if (key === lastNotifiedIncident || $('risk-alert-dialog').open) return;
   lastNotifiedIncident = key;
   alertIncidentId = incident.incident_id;
   $('risk-alert-title').textContent = `${incident.risk_level} RISK INCIDENT`;
-  $('risk-alert-message').textContent = `${incident.asset_id}: score ${Number(incident.risk_score).toFixed(3)} on a 0.0-1.0 scale. Acknowledging records operator awareness only; it does not lower risk or resolve the incident.`;
+  const score = Number(incident.risk_score);
+  const scoreText = incident.risk_score == null || !Number.isFinite(score)
+    ? 'unavailable'
+    : score.toFixed(3);
+  $('risk-alert-message').textContent = `${incident.asset_id}: score ${scoreText} on a 0.0-1.0 scale. Acknowledging records operator awareness only; it does not lower risk or resolve the incident.`;
+  const warning = (incident.warning_details || [])[0];
+  const warningTime = warning?.timestamp
+    ? new Date(warning.timestamp).toLocaleString()
+    : 'Time unavailable';
+  $('risk-alert-trigger').textContent = warning
+    ? `${warning.asset_id || incident.asset_id} · ${warning.trigger || 'Detector'} · ${warning.comparison || 'Numeric limit unavailable'} · ${warningTime}${warning.message ? ` · ${warning.message}` : ''}`
+    : `${incident.asset_id} · Trigger details unavailable · Time ${new Date(incident.start_time).toLocaleString()}`;
   const stopButton = $('risk-alert-sim-stop');
   stopButton.hidden = incident.risk_level !== 'CRITICAL';
   stopButton.disabled = false;
@@ -244,7 +260,7 @@ document.querySelectorAll('[data-focus]').forEach((button) => button.addEventLis
 }));
 $('apply-setpoint').addEventListener('click', () => sendCommand('setpoint'));
 $('target-range').addEventListener('input', (event) => { $('target-input').value = event.target.value; });
-$('target-input').addEventListener('input', (event) => { $('target-range').value = Math.max(0, Math.min(3000, event.target.value)); });
+$('target-input').addEventListener('input', (event) => { $('target-range').value = Math.max(0, Math.min(1450, event.target.value)); });
 $('event-button').addEventListener('click', async () => {
   const button = $('event-button'); const feedback = $('event-feedback'); button.disabled = true; feedback.textContent = 'Sending event to process...';
   try {
