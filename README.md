@@ -1,3 +1,16 @@
+Chem shield group project participant 
+
+Name..............................ID 
+
+1. Hasenat Abdu...................CTC-723-26
+2. Biruktawit Sebsibe.............CTC-6596-26
+3. 
+
+
+
+
+
+
 # CHEM-SHIELD
 
 CHEM-SHIELD is an academic, simulation-first OT monitoring and defensive
