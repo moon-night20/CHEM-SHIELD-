@@ -17,6 +17,8 @@
       <a class="nav-link" href="{{ url_for('dashboard') }}">Dashboard</a>
       <a class="nav-link" href="{{ url_for('machine') }}">Machine</a>
       <a class="nav-link" href="{{ url_for('incidents_page') }}">Incidents</a>
+      <a class="nav-link" href="{{ url_for('p7.command_center_page') }}">Command Center</a>
+      <a class="nav-link" href="{{ url_for('p7.timeline_page') }}">Timeline</a>
       {% if role == "administrator" %}
         <a class="nav-link" href="{{ url_for('users_page') }}">Users</a>
         <a class="nav-link" href="{{ url_for('audit_page') }}">Audit</a>

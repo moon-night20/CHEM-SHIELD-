@@ -60,7 +60,24 @@ def stop_all(admin_port: int = ADMIN_PORT) -> int:
     for pid, command in services.items():
         print(f"Stopping CHEM-SHIELD process {pid}: {command}")
         try:
-            os.kill(pid, signal.SIGTERM)
+            if os.name == "nt":
+                import subprocess
+
+                subprocess.run(
+                    ["taskkill", "/PID", str(pid), "/T"],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+            else:
+                try:
+                    process_group = os.getpgid(pid)
+                except (AttributeError, ProcessLookupError, PermissionError):
+                    process_group = -1
+                if process_group == pid:
+                    os.killpg(pid, signal.SIGTERM)
+                else:
+                    os.kill(pid, signal.SIGTERM)
         except ProcessLookupError:
             continue
 

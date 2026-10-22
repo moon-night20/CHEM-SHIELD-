@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from io import StringIO
+import sqlite3
 from unittest.mock import patch
 
 import pytest
 
 from scripts import run_all
+from scripts import chemshield
 from scripts import stop_all
 
 
@@ -86,6 +88,12 @@ def test_starts_readme_commands_in_order_without_network() -> None:
         assert "5001" in commands[4]
         assert environments[0]["CHEM_SHIELD_ADMIN_PORT"] == "5002"
         assert all(process.command[0] == "python-test" for process in launched)
+        assert all(
+            environment["PYTHONUTF8"] == "1"
+            and environment["PYTHONIOENCODING"] == "utf-8"
+            and environment["PYTHONUNBUFFERED"] == "1"
+            for environment in environments
+        )
         assert len(environments) == 5
         assert all(
             environment["CHEM_SHIELD_INGEST_TOKEN"] == "shared-demo-token"
@@ -128,6 +136,9 @@ def test_kill_old_only_terminates_matching_chem_shield_listener(monkeypatch) -> 
         return [item for item in active.get(port, []) if item[0] not in killed]
 
     monkeypatch.setattr(run_all, "_listener_details", listeners)
+    monkeypatch.setattr(
+        run_all, "_port_is_available", lambda port: not active.get(port)
+    )
     monkeypatch.setattr(run_all, "_port_pids", lambda _port: [])
     monkeypatch.setattr(run_all, "_all_processes", lambda: [])
     monkeypatch.setattr(run_all.os, "kill", lambda pid, _signal: killed.append(pid))
@@ -148,6 +159,7 @@ def test_airplay_port_5000_message_allows_configured_alternate_admin_port(monkey
         "_listener_details",
         lambda port: [(789, "/System/Library/.../ControlCenter")] if port == 5000 else [],
     )
+    monkeypatch.setattr(run_all, "_port_is_available", lambda port: port != 5000)
     output = StringIO()
 
     run_all.ensure_ports_available(admin_port=5002, stream=output)
@@ -181,7 +193,99 @@ def test_stop_all_only_stops_chem_shield_service_listeners(monkeypatch) -> None:
             if pid not in killed
         ],
     )
+
+    def missing_process_group(_pid: int) -> int:
+        raise ProcessLookupError()
+
+    monkeypatch.setattr(stop_all.os, "getpgid", missing_process_group)
     monkeypatch.setattr(stop_all.os, "kill", lambda pid, _signal: killed.append(pid))
 
     assert stop_all.stop_all() == 0
     assert killed == [123, 789]
+
+
+def test_parses_windows_netstat_listening_rows_on_any_host_platform() -> None:
+    output = """\
+Active Connections
+  Proto  Local Address          Foreign Address        State           PID
+  TCP    127.0.0.1:15020        0.0.0.0:0              LISTENING       1234
+  TCP    [::]:5000              [::]:0                 LISTENING       987
+  TCP    127.0.0.1:15020        127.0.0.1:55120        ESTABLISHED     456
+"""
+    assert run_all._parse_netstat_output(output, 15020) == [1234]
+    assert run_all._parse_netstat_output(output, 5000) == [987]
+
+
+def test_parses_posix_lsof_listening_rows_on_any_host_platform() -> None:
+    output = """\
+COMMAND   PID USER   FD   TYPE DEVICE SIZE/OFF NODE NAME
+python   1234 me      6u  IPv4 0x123      0t0  TCP 127.0.0.1:15020 (LISTEN)
+python    987 me      7u  IPv6 0x456      0t0  TCP *:5000 (LISTEN)
+"""
+    assert run_all._parse_lsof_output(output, 15020) == [1234]
+    assert run_all._parse_lsof_output(output, 5000) == [987]
+    assert run_all._parse_lsof_output("1234\n987\n", 5000) == [987, 1234]
+
+
+def test_process_match_requires_a_known_module_invocation() -> None:
+    assert run_all._is_chem_shield_process(
+        "/venv/bin/python -m chem_shield_p1.process.main --port 15020"
+    )
+    assert not run_all._is_chem_shield_process(
+        "python unrelated.py --note chem_shield_p1.process.main"
+    )
+
+
+def test_reset_incidents_only_clears_risk_data(tmp_path) -> None:
+    database = tmp_path / "telemetry.db"
+    with sqlite3.connect(database) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE telemetry (value INTEGER);
+            INSERT INTO telemetry VALUES (42);
+            CREATE TABLE risk_incidents (incident_id TEXT, status TEXT);
+            INSERT INTO risk_incidents VALUES ('incident-1', 'ACTIVE');
+            CREATE TABLE risk_events (event_id TEXT);
+            INSERT INTO risk_events VALUES ('event-1');
+            CREATE TABLE risk_ingest_state (
+                id INTEGER PRIMARY KEY, last_received_at TEXT,
+                last_accepted_at TEXT, accepted_count INTEGER,
+                rejected_count INTEGER
+            );
+            INSERT INTO risk_ingest_state VALUES (1, 'now', 'now', 1, 2);
+            """
+        )
+
+    assert chemshield.main(["reset-incidents", "--database", str(database)]) == 0
+    with sqlite3.connect(database) as connection:
+        assert connection.execute("SELECT value FROM telemetry").fetchone() == (42,)
+        assert connection.execute("SELECT COUNT(*) FROM risk_incidents").fetchone() == (0,)
+        assert connection.execute("SELECT COUNT(*) FROM risk_events").fetchone() == (0,)
+        assert connection.execute(
+            "SELECT accepted_count, rejected_count FROM risk_ingest_state"
+        ).fetchone() == (0, 0)
+
+
+def test_command_dispatch_uses_current_python_and_absolute_script_path(monkeypatch) -> None:
+    received = []
+
+    class Result:
+        returncode = 7
+
+    def fake_run(command, **kwargs):
+        received.append((command, kwargs))
+        return Result()
+
+    monkeypatch.setattr(chemshield.sys, "executable", "/python/current")
+    monkeypatch.setattr(chemshield.subprocess, "run", fake_run)
+
+    assert chemshield.main(["stop", "--admin-port", "5002"]) == 7
+    command, options = received[0]
+    assert command == [
+        "/python/current",
+        str(chemshield.REPO_ROOT / "scripts" / "stop_all.py"),
+        "--admin-port",
+        "5002",
+    ]
+    assert options["cwd"] == chemshield.REPO_ROOT
+    assert options["env"]["PYTHONUNBUFFERED"] == "1"

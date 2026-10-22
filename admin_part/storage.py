@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from chem_shield_p7.audit_chain.chain import append_record, initialize_chain
+
 
 def connect(database: str | Path) -> sqlite3.Connection:
     connection = sqlite3.connect(database)
@@ -40,6 +42,7 @@ def initialize(database: str | Path) -> None:
             );
             """
         )
+        initialize_chain(connection)
 
 
 def utc_now() -> str:
@@ -58,7 +61,7 @@ def add_audit(
     timestamp: str | None = None,
 ) -> None:
     with connect(database) as connection:
-        connection.execute(
+        cursor = connection.execute(
             """
             INSERT INTO audit_log
                 (timestamp, username, role, source_ip, action, incident_id, detail)
@@ -66,6 +69,12 @@ def add_audit(
             """,
             (timestamp or utc_now(), username, role, source_ip, action, incident_id, detail),
         )
+        row = connection.execute(
+            "SELECT id, timestamp, username, role, source_ip, action, incident_id, detail "
+            "FROM audit_log WHERE id = ?",
+            (cursor.lastrowid,),
+        ).fetchone()
+        append_record(connection, dict(row))
 
 
 def get_statuses(database: str | Path) -> dict[str, dict[str, str]]:
@@ -133,7 +142,7 @@ def record_incident_action(
             """,
             (incident_id, status, updated_by, timestamp, note),
         )
-        connection.execute(
+        cursor = connection.execute(
             """
             INSERT INTO audit_log
                 (timestamp, username, role, source_ip, action, incident_id, detail)
@@ -141,6 +150,12 @@ def record_incident_action(
             """,
             (timestamp, updated_by, role, source_ip, action, incident_id, detail),
         )
+        row = connection.execute(
+            "SELECT id, timestamp, username, role, source_ip, action, incident_id, detail "
+            "FROM audit_log WHERE id = ?",
+            (cursor.lastrowid,),
+        ).fetchone()
+        append_record(connection, dict(row))
 
 
 def count_recent_failures(

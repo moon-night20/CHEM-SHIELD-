@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Part 7 Scenarios - CHEM-SHIELD{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='p7.css') }}">
+<main class="p7-shell">
+  <header class="p7-heading"><div><p class="p7-eyebrow">PART 7 / CONTROLLED SIMULATION</p><h1>Scenario library</h1>
+    <p>Each scenario uses the existing loopback OT Command Console API and clears its overrides on completion or abort.</p></div>
+    <a class="p7-button secondary" href="{{ url_for('p7.command_center_page') }}">Command Center</a></header>
+  <section class="p7-scenario-list p7-scenario-page">
+    {% for scenario in scenarios %}
+    <article class="p7-panel"><h2>{{ scenario.name }}</h2><p>{{ scenario.description }}</p>
+      <p><strong>Expected detection:</strong> {{ scenario.expected_detection }}</p>
+      <ol>{% for step in scenario.steps %}<li>+{{ step.t_seconds }}s: {{ step.sensor }} → {{ step.value }}</li>{% endfor %}</ol>
+      <form method="post" action="{{ url_for('p7.run_scenario', scenario_id=scenario.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit">Run {{ scenario.name }}</button>
+      </form>
+    </article>
+    {% endfor %}
+  </section>
+</main>
+{% endblock %}

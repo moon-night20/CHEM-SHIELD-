@@ -13,6 +13,11 @@
     <p>Current status: <strong>{{ incident.status_record.status }}</strong></p>
     {% if incident.status_record.note %}<p>Latest note: {{ incident.status_record.note }}</p>{% endif %}
     <p>Chain last updated: {{ chain_updated or "not available" }}</p>
+    <form method="post" action="{{ url_for('p7.create_report') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="incident_id" value="{{ incident.incident_id }}">
+      <button type="submit">Generate incident report</button>
+    </form>
     {% if errors %}
       <div class="warning-panel"><h2>Chain output warning</h2><ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul></div>
     {% endif %}

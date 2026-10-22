@@ -41,6 +41,7 @@ from admin_part.storage import (
     record_incident_action,
 )
 from admin_part.manage_users import ROLES
+from chem_shield_p7.blueprint import create_blueprint as create_p7_blueprint
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -254,6 +255,13 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
     app.extensions["machine_client"] = (
         app.config["MACHINE_CLIENT"] or MachineClient(app.config["HMI_URL"])
     )
+    app.config.setdefault(
+        "P7_LIMITS_FILE",
+        REPO_ROOT / "chem_shield_p5" / "ot_monitor" / "config.example.json",
+    )
+    app.config.setdefault("P7_REPORT_DIR", REPO_ROOT / "out" / "reports")
+    app.config.setdefault("P7_OUTBOX_PATH", REPO_ROOT / "out" / "outbox.log")
+    app.register_blueprint(create_p7_blueprint(app), url_prefix="/p7")
 
     @app.context_processor
     def shared_template_context():

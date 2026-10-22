@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Command Center - CHEM-SHIELD{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='p7.css') }}">
+<main class="p7-shell">
+  <header class="p7-heading">
+    <div><p class="p7-eyebrow">PART 7 / JUDGE MODE</p><h1>Command Center</h1>
+      <p>Loopback simulation only. Scenario controls change simulated sensor values.</p></div>
+    <div class="p7-actions"><a class="p7-button secondary" href="{{ url_for('p7.timeline_page') }}">Live timeline</a>
+      <a class="p7-button secondary" href="{{ url_for('p7.integrity_page') }}">Audit integrity</a></div>
+  </header>
+  <section class="p7-status-grid" aria-label="Live machine status">
+    <article class="p7-status-card"><span>LIVE MACHINE</span><strong id="p7-condition" class="p7-condition">CONNECTING</strong>
+      <span id="p7-motor">Motor status unavailable</span><span id="p7-updated">Waiting for first update</span></article>
+    <article class="p7-score-card"><span>SECURITY POSTURE SCORE</span><strong><span id="p7-score">--</span><small>/100</small></strong>
+      <p class="p7-disclaimer">Simple demo metric, not an industry standard.</p></article>
+  </section>
+  <section class="p7-gauges" id="p7-gauges" aria-label="Sensor readings"></section>
+  <section class="p7-grid">
+    <article class="p7-panel">
+      <h2>Scenario library</h2><p>One scenario at a time. Abort clears all simulated overrides.</p>
+      <div id="p7-scenarios" class="p7-scenario-list"></div>
+      <div class="p7-controls"><button id="p7-abort" class="danger" type="button">ABORT SCENARIO</button>
+        <span id="p7-run-status" role="status">No scenario running</span></div>
+    </article>
+    <article class="p7-panel">
+      <h2>Security posture breakdown</h2><p id="p7-formula"></p>
+      <dl id="p7-breakdown" class="p7-breakdown"></dl>
+      <p id="p7-integrity-summary" class="p7-integrity"></p>
+    </article>
+  </section>
+  <section class="p7-panel">
+    <div class="p7-section-heading"><div><h2>Live mini-timeline</h2><p id="p7-run-name">No scenario run recorded yet.</p></div>
+      <a href="{{ url_for('p7.timeline_page') }}">Open full timeline</a></div>
+    <ol id="p7-mini-timeline" class="p7-timeline"></ol>
+    <form id="p7-report-form" method="post" action="{{ url_for('p7.create_report') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input id="p7-report-run-id" type="hidden" name="run_id" value="">
+      <button id="p7-generate-report" type="submit" disabled>Generate incident report</button>
+    </form>
+  </section>
+  <section class="p7-grid">
+    <article class="p7-panel p7-demo">
+      <h2>Guided demo mode</h2><p id="p7-demo-caption">A paced walkthrough of the healthy state, simulated scenario, warning, response, and report.</p>
+      <div class="p7-controls"><button id="p7-demo-start" type="button">Start 5-minute demo</button>
+        <button id="p7-demo-next" type="button" disabled>Next</button></div>
+      <p id="p7-demo-step" class="p7-demo-step">Ready</p>
+    </article>
+    <article class="p7-panel">
+      <h2>Mock notifier outbox</h2><p>Local-only demo messages. No email, Telegram, or other network delivery is enabled.</p>
+      <ul id="p7-outbox" class="p7-outbox"><li>Waiting for a critical simulated event.</li></ul>
+    </article>
+  </section>
+</main>
+<script src="{{ url_for('static', filename='p7-command-center.js') }}" defer></script>
+{% endblock %}

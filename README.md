@@ -13,6 +13,7 @@ mitigation.
 - [Part 4: correlation and canonical risk engine](./chem_shield_p4/correlation/README.md)
 - [Part 5: OT monitoring entry point](./chem_shield_p5/ot_monitor/README.md)
 - Part 6: operator-confirmed simulated response
+- [Part 7: Command Center](./chem_shield_p7/README.md)
 
 > **Part 3 held-out synthetic evaluation:** training on 6,000 P1-simulated
 > normal samples and testing on complete unseen attack scenarios detected
@@ -37,6 +38,32 @@ violations can raise warnings. A current CRITICAL condition starts a guarded
 automatic simulated stop countdown (15 minutes by default); returning readings
 to normal cancels it, and the operator can stop the simulator immediately.
 This behavior is simulation-only and never contacts physical equipment.
+
+## Part 7: Command Center
+
+Part 7 adds an optional Admin-hosted Command Center at
+**http://127.0.0.1:5000/p7/command-center**. It presents the existing HMI
+readings and response countdown, provides guided simulation scenarios and a
+live timeline, verifies the additive Admin audit hash chain, and generates
+printable incident reports. Scenario runs use only the existing loopback
+Attack Console and clear their simulated sensor overrides when completed or
+aborted. They do not add a PLC control path or change the existing HMI,
+incident-warning, or guarded auto-stop behavior.
+
+For cross-platform setup, testing, starting, and stopping, use the one-command
+launcher from the repository root:
+
+```text
+python scripts/chemshield.py setup
+python scripts/chemshield.py test
+python scripts/chemshield.py run
+python scripts/chemshield.py stop
+```
+
+The Admin Command Center requires signing in to the local Admin console first.
+See [the Part 7 guide](./chem_shield_p7/README.md) for scenario details,
+MITRE ATT&CK for ICS labels, report generation, audit integrity, and the
+simulation walkthrough.
 
 ## Start the complete virtual machine
 

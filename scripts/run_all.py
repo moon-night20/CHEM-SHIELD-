@@ -12,6 +12,7 @@ import subprocess
 import sys
 import threading
 import time
+import re
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TextIO
@@ -67,6 +68,51 @@ def _port_number(value: str | int) -> int:
     return port
 
 
+def _parse_netstat_output(output: str, port: int) -> list[int]:
+    """Extract listening TCP PIDs from Windows ``netstat -ano`` output."""
+
+    pids: set[int] = set()
+    for line in output.splitlines():
+        fields = line.split()
+        if len(fields) < 5 or fields[0].upper() != "TCP":
+            continue
+        local_port = fields[1].rsplit(":", 1)[-1]
+        if local_port != str(port) or fields[3].upper() != "LISTENING":
+            continue
+        try:
+            pids.add(int(fields[4]))
+        except ValueError:
+            continue
+    return sorted(pids)
+
+
+def _parse_lsof_output(output: str, port: int) -> list[int]:
+    """Extract listening TCP PIDs from standard or PID-only lsof text output."""
+
+    pids: set[int] = set()
+    for line in output.splitlines():
+        fields = line.split()
+        if not fields:
+            continue
+        if len(fields) == 1:
+            try:
+                pids.add(int(fields[0]))
+            except ValueError:
+                continue
+            continue
+        if len(fields) < 9 or "(LISTEN)" not in fields:
+            continue
+        endpoint = fields[-2]
+        match = re.search(r":(\d+)$", endpoint)
+        if match is None or int(match.group(1)) != port:
+            continue
+        try:
+            pids.add(int(fields[1]))
+        except ValueError:
+            continue
+    return sorted(pids)
+
+
 def _port_pids(port: int) -> list[int]:
     if os.name == "nt":
         result = subprocess.run(
@@ -75,36 +121,17 @@ def _port_pids(port: int) -> list[int]:
             capture_output=True,
             text=True,
         )
-        pids = set()
-        for line in result.stdout.splitlines():
-            fields = line.split()
-            if (
-                len(fields) >= 5
-                and fields[0].upper() == "TCP"
-                and fields[1].rsplit(":", 1)[-1] == str(port)
-                and fields[3].upper() == "LISTENING"
-            ):
-                try:
-                    pids.add(int(fields[4]))
-                except ValueError:
-                    continue
-        return sorted(pids)
+        return _parse_netstat_output(result.stdout, port)
     try:
         result = subprocess.run(
-            ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
+            ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN"],
             check=False,
             capture_output=True,
             text=True,
         )
     except FileNotFoundError:
         return []
-    pids = set()
-    for value in result.stdout.splitlines():
-        try:
-            pids.add(int(value.strip()))
-        except ValueError:
-            continue
-    return sorted(pids)
+    return _parse_lsof_output(result.stdout, port)
 
 
 def _process_command(pid: int) -> str:
@@ -167,11 +194,33 @@ def _all_processes() -> list[tuple[int, str]]:
 
 def _is_chem_shield_process(command: str) -> bool:
     normalized = command.casefold()
-    return any(module in normalized for module in SERVICE_COMMANDS)
+    return any(
+        re.search(
+            r"(?:^|\s)-m\s+['\"]?"
+            + re.escape(module)
+            + r"(?=['\"]?(?:\s|$))",
+            normalized,
+        )
+        is not None
+        for module in SERVICE_COMMANDS
+    )
 
 
 def _listener_details(port: int) -> list[tuple[int, str]]:
     return [(pid, _process_command(pid)) for pid in _port_pids(port)]
+
+
+def _port_is_available(port: int, host: str = LOOPBACK_HOST) -> bool:
+    """Check the actual bind operation, independent of optional OS utilities."""
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        if os.name == "nt" and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        try:
+            probe.bind((host, port))
+        except OSError:
+            return False
+    return True
 
 
 def ensure_ports_available(
@@ -207,7 +256,8 @@ def ensure_ports_available(
                 time.sleep(0.1)
     for port in ports:
         listeners = _listener_details(port)
-        if not listeners:
+        bind_available = _port_is_available(port)
+        if not listeners and bind_available:
             continue
         for pid, command in listeners:
             if (
@@ -239,7 +289,7 @@ def ensure_ports_available(
                         "unrelated programs will not be stopped.",
                         file=output,
                     )
-        if kill_old and any(
+        if kill_old and listeners and any(
             _is_chem_shield_process(command) for _, command in listeners
         ):
             deadline = time.monotonic() + SHUTDOWN_TIMEOUT
@@ -253,6 +303,13 @@ def ensure_ports_available(
                         f"Port {port} remains in use by PID {pid}: {command}",
                         file=output,
                     )
+        elif not listeners and not bind_available:
+            print(
+                f"Port {port} is unavailable; process attribution is not available.",
+                file=output,
+            )
+            if port != ADMIN_PORT or admin_port == ADMIN_PORT:
+                blocked.append(port)
     if blocked:
         raise RuntimeError(
             "Cannot start CHEM-SHIELD while required ports are occupied: "
@@ -273,6 +330,7 @@ def build_commands(
         if admin_port is not None
         else os.environ.get("CHEM_SHIELD_ADMIN_PORT", ADMIN_PORT)
     )
+    database = str(REPO_ROOT / "chem_shield_p1" / "data" / "telemetry.db")
     return [
         (
             "PLC",
@@ -297,7 +355,7 @@ def build_commands(
                 "--port",
                 str(PLC_PORT),
                 "--database",
-                "chem_shield_p1/data/telemetry.db",
+                database,
             ],
         ),
         (
@@ -313,7 +371,7 @@ def build_commands(
                 "--plc-port",
                 str(PLC_PORT),
                 "--database",
-                "chem_shield_p1/data/telemetry.db",
+                database,
             ],
         ),
         (
@@ -339,7 +397,7 @@ def build_commands(
                 "--plc-port",
                 str(PLC_PORT),
                 "--database",
-                "chem_shield_p1/data/telemetry.db",
+                database,
             ],
         ),
     ]
@@ -389,6 +447,9 @@ def start_services(
 
     safe_host = _loopback_host(host)
     child_environment = dict(os.environ)
+    child_environment["PYTHONUTF8"] = "1"
+    child_environment["PYTHONIOENCODING"] = "utf-8"
+    child_environment["PYTHONUNBUFFERED"] = "1"
     child_environment.setdefault(
         "CHEM_SHIELD_INGEST_TOKEN",
         secrets.token_urlsafe(32),
@@ -411,8 +472,11 @@ def start_services(
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 bufsize=1,
                 env=child_environment,
+                **_process_group_options(),
             )
             if process.stdout is None:
                 raise RuntimeError(f"{name} process did not provide a log stream")
@@ -437,14 +501,42 @@ def stop_services(children: Sequence[ChildProcess]) -> None:
 
     for child in reversed(children):
         if child.process.poll() is None:
-            child.process.terminate()
+            _signal_child(child.process, force=False)
     for child in reversed(children):
         try:
             child.process.wait(timeout=SHUTDOWN_TIMEOUT)
         except subprocess.TimeoutExpired:
-            child.process.kill()
+            _signal_child(child.process, force=True)
             child.process.wait()
         child.log_thread.join(timeout=SHUTDOWN_TIMEOUT)
+
+
+def _process_group_options() -> dict[str, object]:
+    if os.name == "nt":
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+    return {"start_new_session": True}
+
+
+def _signal_child(process: subprocess.Popen, *, force: bool) -> None:
+    """Signal a managed child process group using the platform's safe mechanism."""
+
+    if os.name == "nt":
+        if force:
+            process.kill()
+        else:
+            try:
+                process.send_signal(signal.CTRL_BREAK_EVENT)
+            except (AttributeError, OSError, ValueError):
+                process.terminate()
+        return
+    pid = getattr(process, "pid", None)
+    if pid is not None:
+        try:
+            os.killpg(pid, signal.SIGKILL if force else signal.SIGTERM)
+            return
+        except (AttributeError, OSError):
+            pass
+    process.kill() if force else process.terminate()
 
 
 def main(argv: list[str] | None = None) -> int:
