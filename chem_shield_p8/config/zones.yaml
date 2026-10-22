@@ -1,0 +1,71 @@
+zones:
+  - id: field
+    name: Process field devices
+    level: 0
+    networks: ["198.51.100.0/28"]
+    allowed_protocols: ["modbus-tcp"]
+  - id: control
+    name: Basic control
+    level: 1
+    networks: ["192.0.2.16/29"]
+    allowed_protocols: ["modbus-tcp"]
+  - id: supervisory
+    name: Supervisory control
+    level: 2
+    networks: ["192.0.2.24/29"]
+    allowed_protocols: ["modbus-tcp", "opcua"]
+  - id: engineering
+    name: Engineering operations
+    level: 3
+    networks: ["192.0.2.0/28"]
+    allowed_protocols: ["modbus-tcp", "opcua"]
+  - id: industrial_dmz
+    name: Industrial DMZ
+    level: "3.5"
+    networks: ["203.0.113.0/28"]
+    allowed_protocols: ["https"]
+  - id: business_it
+    name: Business IT
+    level: 4
+    networks: ["203.0.113.16/28"]
+    allowed_protocols: ["https"]
+  - id: enterprise
+    name: Enterprise and remote access
+    level: 5
+    networks: ["203.0.113.32/28"]
+    allowed_protocols: ["https"]
+
+conduits:
+  - id: engineering_to_control
+    name: Approved engineering access to PLCs
+    source_zone: engineering
+    destination_zone: control
+    allowed_protocols: ["modbus-tcp"]
+    allowed_source_ips: ["192.0.2.10"]
+    allowed_destination_ips: ["192.0.2.20"]
+  - id: supervisory_to_control
+    name: HMI polling of control PLC
+    source_zone: supervisory
+    destination_zone: control
+    allowed_protocols: ["modbus-tcp"]
+    allowed_source_ips: ["192.0.2.30"]
+    allowed_destination_ips: ["192.0.2.20"]
+  - id: business_to_dmz
+    name: Business services terminate in the industrial DMZ
+    source_zone: business_it
+    destination_zone: industrial_dmz
+    allowed_protocols: ["https"]
+  - id: enterprise_to_dmz
+    name: Enterprise access terminates in the industrial DMZ
+    source_zone: enterprise
+    destination_zone: industrial_dmz
+    allowed_protocols: ["https"]
+
+compliance:
+  baseline_points: 100
+  penalties:
+    unknown_zone_flow: 20
+    missing_conduit: 20
+    protocol_not_allowed: 15
+    endpoint_not_allowed: 15
+    direct_it_to_control: 30

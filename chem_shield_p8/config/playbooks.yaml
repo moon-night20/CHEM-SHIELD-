@@ -1,0 +1,27 @@
+playbooks:
+  - id: isolate-zone
+    name: Isolate a simulated zone
+    description: Mark a zone isolated in the local demo state; no firewall or network action is performed.
+    action: isolate_zone
+    parameters:
+      zone_id: control
+  - id: block-conduit
+    name: Block a simulated conduit
+    description: Mark a conduit blocked in the local demo state; no network rule is installed.
+    action: block_conduit
+    parameters:
+      conduit_id: engineering_to_control
+  - id: switch-to-safe-state
+    name: Request simulated reactor safe state
+    description: Stop feed, maximize simulated cooling, and leave relief control automatic in the twin.
+    action: switch_to_safe_state
+    parameters:
+      feed_pump_on: false
+      coolant_valve_pct: 100.0
+      relief_valve_open: null
+  - id: notify-operator
+    name: Notify the simulated operator
+    description: Add a local operator notification to the demo record; no external message is sent.
+    action: notify_operator
+    parameters:
+      message: Review the reactor alert and confirm process state.

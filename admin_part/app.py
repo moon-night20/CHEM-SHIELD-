@@ -48,6 +48,7 @@ BASE_DIR = Path(__file__).resolve().parent
 REPO_ROOT = BASE_DIR.parent
 DEFAULT_ADMIN_HOST = "127.0.0.1"
 DEFAULT_COMMAND_CONSOLE_URL = "http://127.0.0.1:5001"
+DEFAULT_P8_DASHBOARD_URL = "http://127.0.0.1:15080"
 MAX_FAILURES = 5
 LOCKOUT_MINUTES = 5
 SESSION_MINUTES = 20
@@ -268,6 +269,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         return {
             "hmi_url": app.config["HMI_URL"],
             "command_console_url": DEFAULT_COMMAND_CONSOLE_URL,
+            "p8_dashboard_url": DEFAULT_P8_DASHBOARD_URL,
         }
 
     def audit(

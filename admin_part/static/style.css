@@ -225,6 +225,13 @@ a {
   font-weight: 700;
 }
 
+.user-panel .defense-link {
+  border: 1px solid #7ab8ff;
+  background: rgba(74, 108, 167, 0.18);
+  color: #dfeeff;
+  font-weight: 600;
+}
+
 .incident-actions {
   display: grid;
   justify-items: end;

@@ -1,0 +1,143 @@
+[
+  {
+    "id": "setpoint-manipulation",
+    "name": "Setpoint manipulation",
+    "description": "An engineering-path write requests a reactor temperature setpoint outside its safe range.",
+    "techniques": ["T0836", "T0831"],
+    "expected_rules": ["SETPOINT_OUT_OF_RANGE"],
+    "steps": [
+      {
+        "at_seconds": 1,
+        "type": "ot_event",
+        "record": {
+          "protocol": "modbus-tcp",
+          "source_ip": "192.0.2.10",
+          "destination_ip": "192.0.2.20",
+          "device_id": "PLC-REACTOR-01",
+          "function_code": 6,
+          "tag": "temperature",
+          "value": 125
+        }
+      }
+    ]
+  },
+  {
+    "id": "sensor-replay",
+    "name": "Sensor replay",
+    "description": "An identical synthetic sensor poll is replayed inside the configured replay window.",
+    "techniques": ["T0831"],
+    "expected_rules": ["DUPLICATE_PACKET_REPLAY"],
+    "steps": [
+      {
+        "at_seconds": 1,
+        "type": "ot_event",
+        "record": {
+          "protocol": "modbus-tcp",
+          "source_ip": "192.0.2.10",
+          "destination_ip": "192.0.2.20",
+          "device_id": "PLC-REACTOR-01",
+          "function_code": 3,
+          "tag": "temperature",
+          "value": 42
+        }
+      },
+      {
+        "at_seconds": 2,
+        "type": "ot_event",
+        "record": {
+          "protocol": "modbus-tcp",
+          "source_ip": "192.0.2.10",
+          "destination_ip": "192.0.2.20",
+          "device_id": "PLC-REACTOR-01",
+          "function_code": 3,
+          "tag": "temperature",
+          "value": 42
+        }
+      }
+    ]
+  },
+  {
+    "id": "rogue-engineering-workstation",
+    "name": "Rogue engineering workstation",
+    "description": "A new endpoint attempts a pressure write without being on the engineering allowlist.",
+    "techniques": ["T1692.001"],
+    "expected_rules": ["UNKNOWN_ASSET", "UNAUTHORIZED_WRITE", "ENDPOINT_NOT_ALLOWED"],
+    "steps": [
+      {
+        "at_seconds": 3,
+        "type": "ot_event",
+        "record": {
+          "protocol": "modbus-tcp",
+          "source_ip": "192.0.2.11",
+          "destination_ip": "192.0.2.20",
+          "device_id": "PLC-REACTOR-01",
+          "function_code": 6,
+          "tag": "pressure",
+          "value": 6.5
+        }
+      }
+    ]
+  },
+  {
+    "id": "loss-of-view",
+    "name": "Loss of view",
+    "description": "Synthetic process telemetry is absent past the local monitoring deadline.",
+    "techniques": ["T1691.002"],
+    "expected_rules": ["LOSS_OF_VIEW"],
+    "steps": [
+      {
+        "at_seconds": 0,
+        "type": "telemetry_gap",
+        "duration_seconds": 5,
+        "threshold_seconds": 3
+      }
+    ]
+  },
+  {
+    "id": "safety-bypass-attempt",
+    "name": "Safety bypass attempt",
+    "description": "A SIS bypass flag changes from its signed simulated baseline.",
+    "techniques": ["T0836", "T1692.001"],
+    "expected_rules": ["SIS_BASELINE_CHANGE"],
+    "steps": [
+      {
+        "at_seconds": 4,
+        "type": "sis_change",
+        "state": {
+          "trip_setpoints": {
+            "reactor_temperature_high_c": 95.0,
+            "reactor_pressure_high_bar": 9.0
+          },
+          "bypass_flags": {
+            "high_temperature_trip": true,
+            "high_pressure_trip": false
+          },
+          "safety_valve_states": {"reactor_relief": false},
+          "configuration": {"logic_revision": "1.0", "plc_id": "SIS-01"}
+        }
+      }
+    ]
+  },
+  {
+    "id": "it-to-ot-lateral-movement",
+    "name": "IT-to-OT lateral movement",
+    "description": "A Level 4 synthetic host attempts a direct control command to a Level 1 PLC.",
+    "techniques": ["T1692.001"],
+    "expected_rules": ["UNKNOWN_ASSET", "UNAUTHORIZED_WRITE", "DIRECT_IT_TO_CONTROL"],
+    "steps": [
+      {
+        "at_seconds": 5,
+        "type": "ot_event",
+        "record": {
+          "protocol": "modbus-tcp",
+          "source_ip": "203.0.113.20",
+          "destination_ip": "192.0.2.20",
+          "device_id": "PLC-REACTOR-01",
+          "function_code": 6,
+          "tag": "feed_pump",
+          "value": 1
+        }
+      }
+    ]
+  }
+]

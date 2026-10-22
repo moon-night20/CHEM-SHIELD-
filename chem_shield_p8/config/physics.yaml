@@ -1,0 +1,12 @@
+maximum_rate_per_second:
+  temperature_c: 2.0
+  pressure_bar: 0.5
+  level_pct: 1.5
+  flow_l_min: 20.0
+balance_tolerance_per_second:
+  temperature_c: 0.6
+  level_pct: 0.3
+  pressure_bar: 0.15
+cooling_valve_high_pct: 75.0
+cooling_unexplained_temperature_rate_c_per_second: 0.8
+pump_off_flow_tolerance_l_min: 3.0

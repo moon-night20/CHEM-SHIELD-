@@ -1,0 +1,66 @@
+plant:
+  ambient_temperature_c: 22.0
+  initial_temperature_c: 35.0
+  initial_pressure_bar: 2.0
+  initial_level_pct: 55.0
+  vessel_capacity_l: 1200.0
+  thermal_capacity_kj_per_c: 18000.0
+  heat_loss_kw_per_c: 0.18
+  feed_heat_kw_per_l_min: 0.9
+  coolant_capacity_kw: 110.0
+  coolant_lag_seconds: 8.0
+  feed_lag_seconds: 5.0
+  pressure_generation_bar_per_c_second: 0.0007
+  relief_capacity_bar_per_second: 0.08
+  natural_pressure_relief_per_second: 0.004
+  relief_setpoint_bar: 8.0
+  nominal_product_outflow_l_min: 36.0
+  sensor_noise:
+    temperature_c: 0.08
+    pressure_bar: 0.01
+    level_pct: 0.03
+    flow_l_min: 0.15
+
+tags:
+  temperature:
+    unit: "degC"
+    safe_range: [0.0, 120.0]
+    trip_low: 5.0
+    trip_high: 100.0
+    register_scale: 100
+  pressure:
+    unit: "bar"
+    safe_range: [0.0, 12.0]
+    trip_low: null
+    trip_high: 10.0
+    register_scale: 100
+  level:
+    unit: "percent"
+    safe_range: [0.0, 100.0]
+    trip_low: 15.0
+    trip_high: 95.0
+    register_scale: 100
+  flow:
+    unit: "L/min"
+    safe_range: [0.0, 120.0]
+    trip_low: null
+    trip_high: null
+    register_scale: 100
+  coolant_valve:
+    unit: "percent"
+    safe_range: [0.0, 100.0]
+    trip_low: null
+    trip_high: null
+    register_scale: 100
+  feed_pump:
+    unit: "boolean"
+    safe_range: [0.0, 1.0]
+    trip_low: null
+    trip_high: null
+    register_scale: 1
+  relief_valve:
+    unit: "boolean"
+    safe_range: [0.0, 1.0]
+    trip_low: null
+    trip_high: null
+    register_scale: 1

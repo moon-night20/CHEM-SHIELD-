@@ -14,6 +14,7 @@ mitigation.
 - [Part 5: OT monitoring entry point](./chem_shield_p5/ot_monitor/README.md)
 - Part 6: operator-confirmed simulated response
 - [Part 7: Command Center](./chem_shield_p7/README.md)
+- [Part 8: Local OT Defense Lab](./chem_shield_p8/README.md)
 
 > **Part 3 held-out synthetic evaluation:** training on 6,000 P1-simulated
 > normal samples and testing on complete unseen attack scenarios detected
@@ -54,16 +55,35 @@ For cross-platform setup, testing, starting, and stopping, use the one-command
 launcher from the repository root:
 
 ```text
-python scripts/chemshield.py setup
-python scripts/chemshield.py test
-python scripts/chemshield.py run
-python scripts/chemshield.py stop
+chem_shield_p1/.venv/bin/python -m scripts.chemshield setup
 ```
+
+`setup` installs the shared dependencies for Parts 1–8. Use
+`chem_shield_p1/.venv/bin/python -m scripts.chemshield test` to run the
+repository-wide suite, including the Part 6, Part 8, and Attack Console tests.
+The `run` command starts the five core machine services; Part 8 is started
+separately so it remains optional. `stop` stops the core services.
 
 The Admin Command Center requires signing in to the local Admin console first.
 See [the Part 7 guide](./chem_shield_p7/README.md) for scenario details,
 MITRE ATT&CK for ICS labels, report generation, audit integrity, and the
 simulation walkthrough.
+
+## Part 8: Reactor Defense Center
+
+Part 8 is an optional standalone dashboard and is not started by the main
+`run_all.py` launcher. With the repository virtual environment installed, start
+it in a separate terminal from the repository root:
+
+```bash
+chem_shield_p1/.venv/bin/python -m chem_shield_p8.run
+```
+
+Open **http://127.0.0.1:15080** directly, or use **Defense Dashboard** in the
+Admin navigation. Its first panel shows the live virtual-machine data path and
+read-only machine readings; the reactor twin below is a separate local
+simulation. The dashboard never controls the machine. See
+[the Part 8 guide](./chem_shield_p8/README.md) for setup and safety details.
 
 ## Start the complete virtual machine
 
@@ -104,32 +124,73 @@ chem_shield_p1/.venv/bin/python -m admin_part.manage_users list
 
 ### Start the machine (recommended: one command)
 
-From the repository root, use the configured virtual-environment interpreter:
+From the repository root, use the configured virtual-environment interpreter.
+This is the recommended start command:
 
 ```bash
-chem_shield_p1/.venv/bin/python scripts/run_all.py
+chem_shield_p1/.venv/bin/python -m scripts.chemshield run
 ```
 
-The launcher checks ports 15020 (PLC), 15000 (HMI), 5000 (Admin), and 5001
-(Attack Console) before starting. If an old CHEM-SHIELD process owns one, it
-prints the PID and command. Only when you are sure the listed process is an
-old CHEM-SHIELD service, opt in to stopping matching service processes with:
+The command starts and monitors five loopback services in dependency order:
+PLC (`15020`), process simulator, machine HMI (`15000`), Admin (`5000`), and
+Attack Console (`5001`). It waits for the PLC before launching dependent
+services and prints each service's output in this terminal. Keep this terminal
+open; press **Ctrl+C** once to stop the services it launched. Part 8 is
+optional and runs separately on port `15080`.
+
+The launcher checks the service ports before starting. If a port is occupied,
+it reports the process and PID. Only when the listed process is an old
+CHEM-SHIELD service, opt in to stopping matching service processes with:
 
 ```bash
-chem_shield_p1/.venv/bin/python scripts/run_all.py --kill-old
+chem_shield_p1/.venv/bin/python -m scripts.chemshield run --kill-old
 ```
 
-Unrelated processes are never stopped. Press **Ctrl+C** to stop the launched
-services. To stop recognized CHEM-SHIELD services started separately:
+Unrelated processes are never stopped. To stop recognized CHEM-SHIELD
+services started in separate terminals:
 
 ```bash
-chem_shield_p1/.venv/bin/python scripts/stop_all.py
+chem_shield_p1/.venv/bin/python -m scripts.chemshield stop
 ```
 
-To use another Admin port, set `CHEM_SHIELD_ADMIN_PORT` or run
-`chem_shield_p1/.venv/bin/python scripts/run_all.py --admin-port 5002`.
+The stop command covers the PLC, process simulator, HMI, Admin, and Attack
+Console. Stop the optional Part 8 service with **Ctrl+C** in the terminal where
+it was started.
 
-### Start the machine manually (five terminals)
+To use another Admin port, pass it to both start and stop commands, or set
+`CHEM_SHIELD_ADMIN_PORT` in the environment:
+
+```bash
+chem_shield_p1/.venv/bin/python -m scripts.chemshield run --admin-port 5002
+chem_shield_p1/.venv/bin/python -m scripts.chemshield stop --admin-port 5002
+```
+
+Use a **second terminal** from the repository root to start the optional
+Part 8 Defense Dashboard:
+
+```bash
+chem_shield_p1/.venv/bin/python -m chem_shield_p8.run
+```
+
+Keep that terminal open while using **http://127.0.0.1:15080**. Stop Part 8
+with **Ctrl+C** in that terminal. Part 8 reads the running HMI's machine feed
+but does not send commands to the machine.
+
+### Exact verification and status commands
+
+From the repository root, run the complete configured test suite before a
+demo, and use `status` to see which core ports are occupied:
+
+```bash
+chem_shield_p1/.venv/bin/python -m scripts.chemshield test
+chem_shield_p1/.venv/bin/python -m scripts.chemshield status
+```
+
+The suite includes Parts 1–8, Admin, the Attack Console, and launcher tests.
+`status` reports service-port occupancy and the active incident count; it does
+not start or stop services.
+
+### Start the machine manually (five terminals, plus optional Part 8)
 
 Open five terminals, set each terminal's working directory to the repository
 root, then run one command in each. Start them in this order.
@@ -191,7 +252,8 @@ Receiver; turn it off in **System Settings → General → AirDrop & Handoff** o
 select another Admin port.
 Use its Dashboard and Incidents pages for detector risk and incident review;
 the operator machine controls remain on port 15000. The admin Machine page is
-read-only.
+read-only. The Admin navigation also links to the Part 8 dashboard on port
+15080 when that optional service is running.
 
 **Terminal 5 — OT Command Testing Console**
 
@@ -241,6 +303,27 @@ output with its service name. Press **Ctrl+C** once to stop all children. The
 launcher refuses non-loopback hosts. To use the individual commands instead,
 keep using the five-terminal instructions above.
 
+### Open the pages
+
+After starting `run_all.py`, open the pages you need:
+
+- Operator machine HMI: **http://127.0.0.1:15000**
+- Supervisor/Admin console: **http://127.0.0.1:5000**
+- Attack Console: **http://127.0.0.1:5001**, or use its link in Admin
+- Command Center: **http://127.0.0.1:5000/p7/command-center**
+- Timeline: **http://127.0.0.1:5000/p7/timeline**
+
+To use the **Defense Dashboard** link in Admin, start Part 8 in another terminal
+from the repository root:
+
+```bash
+chem_shield_p1/.venv/bin/python -m chem_shield_p8.run
+```
+
+Then open **http://127.0.0.1:15080** directly or click **Defense Dashboard**
+in the Admin navigation. The Command Center and Timeline are integrated into
+the Admin console; their labels do not imply physical machine control.
+
 ### Stop and restart
 
 To shut down, press **Ctrl+C** in each of the five server terminals. Start
@@ -264,6 +347,10 @@ Telemetry and risk incidents are stored locally in
 - **Admin page cannot open:** verify Terminal 4 is running on the selected
   Admin port (5000 by default); the machine console at port `15000` is a
   separate service.
+- **Part 8 link does not open:** start Part 8 with
+  `chem_shield_p1/.venv/bin/python -m chem_shield_p8.run` and verify
+  `http://127.0.0.1:15080` responds. Part 8 is optional and is not started by
+  `run_all.py`.
 - **Process simulator cannot connect:** start the PLC first and confirm its
   listener is on `127.0.0.1:15020`. The simulator prints its connection and
   telemetry database path once connected.

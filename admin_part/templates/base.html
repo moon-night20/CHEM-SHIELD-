@@ -17,15 +17,16 @@
       <a class="nav-link" href="{{ url_for('dashboard') }}">Dashboard</a>
       <a class="nav-link" href="{{ url_for('machine') }}">Machine</a>
       <a class="nav-link" href="{{ url_for('incidents_page') }}">Incidents</a>
-      <a class="nav-link" href="{{ url_for('p7.command_center_page') }}">Command Center</a>
-      <a class="nav-link" href="{{ url_for('p7.timeline_page') }}">Timeline</a>
+      <a class="nav-link" href="{{ url_for('p7.command_center_page') }}" title="Guided scenarios and simulated responses only; does not control physical equipment">Command Center</a>
+      <a class="nav-link" href="{{ url_for('p7.timeline_page') }}" title="Read-only review of local machine and scenario events">Timeline</a>
       {% if role == "administrator" %}
         <a class="nav-link" href="{{ url_for('users_page') }}">Users</a>
         <a class="nav-link" href="{{ url_for('audit_page') }}">Audit</a>
         <a class="nav-link" href="{{ url_for('settings') }}">Settings</a>
       {% endif %}
-      <a class="nav-link hmi-link" href="{{ hmi_url }}" rel="noopener noreferrer">Back to machine HMI</a>
-      <a class="nav-link command-link" href="{{ command_console_url }}">Attack Console</a>
+      <a class="nav-link hmi-link" href="{{ hmi_url }}" title="Virtual machine operator controls and status" rel="noopener noreferrer">Back to machine HMI</a>
+      <a class="nav-link command-link" href="{{ command_console_url }}" title="Apply or clear virtual sensor overrides for local simulation testing">Attack Console</a>
+      <a class="nav-link defense-link" href="{{ p8_dashboard_url }}" title="Read-only machine health, OT detections, and simulated process analysis" rel="noopener noreferrer">Defense Dashboard</a>
       <form method="post" action="{{ url_for('logout') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="link-button nav-link" type="submit">Log out</button>

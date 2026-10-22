@@ -260,6 +260,9 @@ def test_dashboard_counts_live_ot_risk_incidents(setup_console):
     response = client.get("/dashboard")
 
     assert response.status_code == 200
+    assert b">Defense Dashboard</a>" in response.data
+    assert b"Read-only machine health, OT detections" in response.data
+    assert b"http://127.0.0.1:15080" in response.data
     assert b"HIGH-RISK INCIDENTS REQUIRE REVIEW" in response.data
     assert b"INC-OT-001" in response.data
     assert b">HIGH</span><strong>1</strong>" in response.data

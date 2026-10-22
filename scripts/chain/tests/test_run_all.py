@@ -289,3 +289,16 @@ def test_command_dispatch_uses_current_python_and_absolute_script_path(monkeypat
     ]
     assert options["cwd"] == chemshield.REPO_ROOT
     assert options["env"]["PYTHONUNBUFFERED"] == "1"
+
+
+def test_run_command_forwards_launcher_options(monkeypatch) -> None:
+    received = []
+
+    def fake_run_script(script, args):
+        received.append((script, args))
+        return 0
+
+    monkeypatch.setattr(chemshield, "_run_script", fake_run_script)
+
+    assert chemshield.main(["run", "--admin-port", "5002", "--kill-old"]) == 0
+    assert received == [("run_all.py", ["--kill-old", "--admin-port", "5002"])]

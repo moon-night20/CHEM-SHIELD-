@@ -56,11 +56,19 @@ def _test(args: argparse.Namespace) -> int:
 
 
 def _run(args: argparse.Namespace) -> int:
-    return _run_script("run_all.py", args.run_args)
+    run_args = list(args.run_args)
+    if args.admin_port is not None:
+        run_args[0:0] = ["--admin-port", str(args.admin_port)]
+    if args.kill_old:
+        run_args.insert(0, "--kill-old")
+    return _run_script("run_all.py", run_args)
 
 
 def _stop(args: argparse.Namespace) -> int:
-    return _run_script("stop_all.py", args.stop_args)
+    stop_args = list(args.stop_args)
+    if args.admin_port is not None:
+        stop_args[0:0] = ["--admin-port", str(args.admin_port)]
+    return _run_script("stop_all.py", stop_args)
 
 
 def _database_path(value: str | Path) -> Path:
@@ -175,10 +183,13 @@ def build_parser() -> argparse.ArgumentParser:
     test.set_defaults(handler=_test)
 
     run = subparsers.add_parser("run", help="Start all loopback demo services.")
+    run.add_argument("--admin-port", type=int, default=None)
+    run.add_argument("--kill-old", action="store_true")
     run.add_argument("run_args", nargs=argparse.REMAINDER)
     run.set_defaults(handler=_run)
 
     stop = subparsers.add_parser("stop", help="Stop recognized CHEM-SHIELD services.")
+    stop.add_argument("--admin-port", type=int, default=None)
     stop.add_argument("stop_args", nargs=argparse.REMAINDER)
     stop.set_defaults(handler=_stop)
 
