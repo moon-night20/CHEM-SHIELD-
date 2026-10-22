@@ -4,9 +4,8 @@ Name..............................ID
 
 1. Hasenat Abdu...................CTC-723-26
 2. Biruktawit Sebsibe.............CTC-6596-26
-3. 
+3. Firomsa Abdisa.................CTC-1602-26
 4. 
-5. 
 
 
 
