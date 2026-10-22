@@ -1,18 +1,26 @@
 """Flask API integration tests for correlated incident visibility."""
 
 import tempfile
-import threading
-import time
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from chem_shield_p1.communication.device_connection import DeviceConnection
 from chem_shield_p1.hmi.app import create_app
+from chem_shield_p4.correlation.incident_store import IncidentStore
 
 
 class RiskRouteTests(unittest.TestCase):
+    @staticmethod
+    def current_timestamp(seconds_ago=0):
+        from datetime import timedelta
+
+        return (
+            datetime.now(timezone.utc) - timedelta(seconds=seconds_ago)
+        ).isoformat().replace("+00:00", "Z")
+
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.app = create_app(
@@ -25,8 +33,7 @@ class RiskRouteTests(unittest.TestCase):
         self.client.environ_base["HTTP_X_INGEST_TOKEN"] = self.app.config["INGEST_TOKEN"]
 
     def tearDown(self):
-        for timer in self.app.extensions["p6_stop_timers"].values():
-            timer.cancel()
+        self.app.extensions["stop_background_tasks"]()
         self.temp_dir.cleanup()
 
     def test_summary_starts_unassessed_not_low(self):
@@ -134,7 +141,7 @@ class RiskRouteTests(unittest.TestCase):
             "/api/risk/events",
             json={
                 "event_id": "synthetic-ot-1",
-                "timestamp": "2026-10-14T09:30:00Z",
+                "timestamp": self.current_timestamp(),
                 "source": "ot_monitor",
                 "asset_id": "PLC-01",
                 "event_type": "temperature_high",
@@ -166,7 +173,7 @@ class RiskRouteTests(unittest.TestCase):
             "/api/risk/events",
             json={
                 "event_id": "synthetic-unscored-1",
-                "timestamp": "2026-10-14T09:30:00Z",
+                "timestamp": self.current_timestamp(),
                 "source": "ot_monitor",
                 "asset_id": "PLC-02",
                 "event_type": "pressure_high",
@@ -183,7 +190,7 @@ class RiskRouteTests(unittest.TestCase):
             "/api/risk/events",
             json={
                 "event_id": "warning-details-temperature-high",
-                "timestamp": "2026-10-14T09:30:00Z",
+                "timestamp": self.current_timestamp(),
                 "source": "ot_monitor",
                 "asset_id": "PLC-01",
                 "event_type": "physical",
@@ -204,10 +211,12 @@ class RiskRouteTests(unittest.TestCase):
         warning = self.client.get("/api/risk").get_json()["active_incidents"][0][
             "warning_details"
         ][0]
+        summary = self.client.get("/api/risk").get_json()
+        self.assertEqual(summary["popup_candidates"], [])
         self.assertEqual(warning["asset_id"], "PLC-01")
         self.assertEqual(warning["trigger"], "temperature / TEMPERATURE-HIGH")
         self.assertEqual(warning["comparison"], "90 degC vs limit 70 degC")
-        self.assertEqual(warning["timestamp"], "2026-10-14T09:30:00Z")
+        self.assertEqual(warning["timestamp"], accepted.get_json()["incidents"][0]["events"][0]["timestamp"])
 
     def test_existing_hmi_remains_available_when_plc_is_disconnected(self):
         response = self.client.get("/api/state")
@@ -237,55 +246,58 @@ class RiskRouteTests(unittest.TestCase):
                 database=str(Path(self.temp_dir.name) / "limits.db"),
             )
             app.config.update(TESTING=True)
-            client = app.test_client()
+            try:
+                client = app.test_client()
 
-            for sensor, value, event_sensor in (
-                ("temperature", 7000, "temperature"),
-                ("pressure", 400, "pressure"),
-                ("power", 1200, "power"),
-                ("rpm", 1500, "speed"),
-            ):
-                with self.subTest(sensor=sensor):
-                    if sensor == "temperature":
-                        registers[3] = value
-                    elif sensor == "pressure":
-                        registers[4] = value
-                    elif sensor == "power":
-                        registers[5] = value
-                    else:
-                        registers[2] = value
-                    at_limit = client.get("/api/state").get_json()
-                    self.assertEqual(at_limit["machine_condition"], "NORMAL")
-                    self.assertEqual(at_limit["limit_alerts"], [])
-                    self.assertNotIn("limits", at_limit)
+                for sensor, value, event_sensor in (
+                    ("temperature", 7000, "temperature"),
+                    ("pressure", 400, "pressure"),
+                    ("power", 1200, "power"),
+                    ("rpm", 1500, "speed"),
+                ):
+                    with self.subTest(sensor=sensor):
+                        if sensor == "temperature":
+                            registers[3] = value
+                        elif sensor == "pressure":
+                            registers[4] = value
+                        elif sensor == "power":
+                            registers[5] = value
+                        else:
+                            registers[2] = value
+                        at_limit = client.get("/api/state").get_json()
+                        self.assertEqual(at_limit["machine_condition"], "NORMAL")
+                        self.assertEqual(at_limit["limit_alerts"], [])
+                        self.assertNotIn("limits", at_limit)
 
-                    if sensor == "temperature":
-                        registers[3] += 1
-                    elif sensor == "pressure":
-                        registers[4] += 1
-                    elif sensor == "power":
-                        registers[5] += 1
-                    else:
-                        registers[2] += 1
-                    above_limit = client.get("/api/state").get_json()
-                    self.assertEqual(above_limit["machine_condition"], "CRITICAL")
-                    self.assertEqual(
-                        above_limit["limit_alerts"][0]["sensor"],
-                        event_sensor,
-                    )
-                    self.assertEqual(above_limit["motor_status"], "RUNNING")
+                        if sensor == "temperature":
+                            registers[3] += 1
+                        elif sensor == "pressure":
+                            registers[4] += 1
+                        elif sensor == "power":
+                            registers[5] += 1
+                        else:
+                            registers[2] += 1
+                        above_limit = client.get("/api/state").get_json()
+                        self.assertEqual(above_limit["machine_condition"], "CRITICAL")
+                        self.assertEqual(
+                            above_limit["limit_alerts"][0]["sensor"],
+                            event_sensor,
+                        )
+                        self.assertEqual(above_limit["motor_status"], "RUNNING")
 
-                    if sensor == "temperature":
-                        registers[3] -= 2
-                    elif sensor == "pressure":
-                        registers[4] -= 2
-                    elif sensor == "power":
-                        registers[5] -= 2
-                    else:
-                        registers[2] -= 2
-                    normal_again = client.get("/api/state").get_json()
-                    self.assertEqual(normal_again["machine_condition"], "NORMAL")
-                    self.assertEqual(normal_again["limit_alerts"], [])
+                        if sensor == "temperature":
+                            registers[3] -= 2
+                        elif sensor == "pressure":
+                            registers[4] -= 2
+                        elif sensor == "power":
+                            registers[5] -= 2
+                        elif sensor == "rpm":
+                            registers[2] -= 2
+                        normal_again = client.get("/api/state").get_json()
+                        self.assertEqual(normal_again["machine_condition"], "NORMAL")
+                        self.assertEqual(normal_again["limit_alerts"], [])
+            finally:
+                app.extensions["stop_background_tasks"]()
 
     def _post_critical_incident(self):
         response = self.client.post(
@@ -293,7 +305,7 @@ class RiskRouteTests(unittest.TestCase):
             json={"events": [
                 {
                     "event_id": "p6-network",
-                    "timestamp": "2026-10-14T09:30:00Z",
+                    "timestamp": self.current_timestamp(2),
                     "source": "network_model",
                     "asset_id": "PLC-01",
                     "event_type": "network",
@@ -303,7 +315,7 @@ class RiskRouteTests(unittest.TestCase):
                 },
                 {
                     "event_id": "p6-physical",
-                    "timestamp": "2026-10-14T09:30:01Z",
+                    "timestamp": self.current_timestamp(),
                     "source": "physical_ml",
                     "asset_id": "PLC-01",
                     "event_type": "physical",
@@ -347,7 +359,7 @@ class RiskRouteTests(unittest.TestCase):
             "/api/risk/events",
             json={
                 "event_id": "p6-low-risk",
-                "timestamp": "2026-10-14T09:40:00Z",
+                "timestamp": self.current_timestamp(),
                 "source": "network_model",
                 "asset_id": "PLC-02",
                 "event_type": "network",
@@ -410,41 +422,16 @@ class RiskRouteTests(unittest.TestCase):
         events = self.client.get("/api/events").get_json()
         self.assertEqual(events[0]["event_type"], "P6_SIMULATED_STOP")
 
-    def test_critical_incident_auto_stops_after_countdown_from_warning(self):
-        self.app.config["P6_AUTO_STOP_DELAY_SECONDS"] = 0.6
+    def test_critical_warning_and_acknowledgement_do_not_stop_without_confirmation(self):
         token = self.app.config["P6_CONFIRM_TOKEN"]
-        stopped = threading.Event()
-        writes = []
-
-        class FakeClient:
-            def read_holding_registers(self, address, count, slave):
-                return SimpleNamespace(
-                    isError=lambda: False,
-                    registers=[1, 1500, 100, 6200, 400, 1200, 0, 0],
-                )
-
-            def write_registers(self, address, values, slave):
-                writes.append(("registers", address, values, slave))
-                return SimpleNamespace(isError=lambda: False)
-
-            def write_register(self, address, value, slave):
-                writes.append(("register", address, value, slave))
-                stopped.set()
-                return SimpleNamespace(isError=lambda: False)
-
-        fake_client = FakeClient()
         with patch.object(
             DeviceConnection,
             "call",
             autospec=True,
-            side_effect=lambda _device, action: action(fake_client),
-        ):
+        ) as plc_call:
             incident_id = self._post_critical_incident()
-            time.sleep(0.1)
             summary = self.client.get("/api/risk").get_json()
-            incident = summary["active_incidents"][0]
-            self.assertEqual(incident["p6_auto_stop_status"], "countdown")
-            self.assertLess(incident["p6_auto_stop_remaining_seconds"], 0.6)
+            self.assertEqual(summary["active_incidents"][0]["risk_level"], "CRITICAL")
 
             response = self.client.post(
                 f"/api/incidents/{incident_id}/acknowledge",
@@ -452,31 +439,16 @@ class RiskRouteTests(unittest.TestCase):
                 headers={"X-Chem-Shield-P6-Confirmation": token},
             )
             self.assertEqual(response.status_code, 200, response.get_json())
-            self.assertTrue(response.get_json()["p6_auto_stop_armed"])
-            self.assertLess(response.get_json()["p6_countdown_seconds"], 0.6)
-            self.assertTrue(stopped.wait(2), "automatic simulated stop did not run")
-            self.assertEqual(
-                self.client.post(
-                    "/api/p6/respond",
-                    json={"incident_id": incident_id, "confirm_stop": True},
-                    headers={"X-Chem-Shield-P6-Confirmation": token},
-                ).status_code,
-                200,
-            )
+            self.assertTrue(response.get_json()["p6_response_available"])
+            plc_call.assert_not_called()
 
-        self.assertEqual(writes, [
-            ("registers", 0, [0, 1500], 1),
-            ("register", 8, 0, 1),
-            ("register", 6, 0, 1),
-        ])
-
-    def test_noncritical_incidents_do_not_arm_auto_stop(self):
+    def test_noncritical_incidents_do_not_offer_simulated_stop(self):
         token = self.app.config["P6_CONFIRM_TOKEN"]
         response = self.client.post(
             "/api/risk/events",
             json={
                 "event_id": "p6-high-risk-ack",
-                "timestamp": "2026-10-14T09:40:00Z",
+                "timestamp": self.current_timestamp(),
                 "source": "network_model",
                 "asset_id": "PLC-02",
                 "event_type": "network",
@@ -493,7 +465,7 @@ class RiskRouteTests(unittest.TestCase):
             headers={"X-Chem-Shield-P6-Confirmation": token},
         )
         self.assertEqual(acknowledged.status_code, 200)
-        self.assertFalse(acknowledged.get_json()["p6_auto_stop_armed"])
+        self.assertFalse(acknowledged.get_json()["p6_response_available"])
 
     def test_p6_refuses_non_loopback_machine_target(self):
         with patch.object(DeviceConnection, "connect", side_effect=ConnectionError):
@@ -503,14 +475,17 @@ class RiskRouteTests(unittest.TestCase):
                 database=str(Path(self.temp_dir.name) / "remote.db"),
             )
         app.config.update(TESTING=True)
-        response = app.test_client().post(
-            "/api/p6/respond",
-            json={"incident_id": "INC-1", "confirm_stop": True},
-            headers={
-                "X-Chem-Shield-P6-Confirmation": app.config["P6_CONFIRM_TOKEN"]
-            },
-        )
-        self.assertEqual(response.status_code, 403)
+        try:
+            response = app.test_client().post(
+                "/api/p6/respond",
+                json={"incident_id": "INC-1", "confirm_stop": True},
+                headers={
+                    "X-Chem-Shield-P6-Confirmation": app.config["P6_CONFIRM_TOKEN"]
+                },
+            )
+            self.assertEqual(response.status_code, 403)
+        finally:
+            app.extensions["stop_background_tasks"]()
 
     def test_p6_refuses_non_loopback_caller(self):
         incident_id = self._post_critical_incident()
@@ -528,6 +503,192 @@ class RiskRouteTests(unittest.TestCase):
         with patch.object(DeviceConnection, "call", autospec=True) as plc_call:
             self._post_critical_incident()
         plc_call.assert_not_called()
+
+    def test_stale_critical_database_row_is_not_a_popup_candidate_or_stop_timer(self):
+        database = Path(self.temp_dir.name) / "stale.db"
+        store = IncidentStore(database)
+        timestamp = self.current_timestamp(180)
+        event = {
+            "event_id": "stale-critical",
+            "timestamp": timestamp,
+            "source": "physical_ml",
+            "event_type": "physical",
+            "severity": "high",
+            "anomaly_score": 1.0,
+            "evidence": {},
+        }
+        store.save_incident({
+            "incident_id": "INC-STALE",
+            "asset_id": "PLC-01",
+            "start_time": timestamp,
+            "end_time": timestamp,
+            "last_event_time": timestamp,
+            "status": "ACTIVE",
+            "risk_level": "CRITICAL",
+            "risk_score": 1.0,
+            "risk_assessment": {},
+            "events": [event],
+        }, [event])
+        app = create_app(
+            plc_host="127.0.0.1",
+            plc_port=1,
+            database=str(database),
+        )
+        app.config.update(TESTING=True, P6_AUTO_STOP_SECONDS=0.05)
+        try:
+            summary = app.test_client().get("/api/risk").get_json()
+            self.assertEqual(summary["active_incidents"], [])
+            self.assertEqual(summary["popup_candidates"], [])
+            self.assertEqual(app.extensions["p6_stop_timers"], {})
+            self.assertEqual(
+                store.get_incident("INC-STALE")["status"],
+                "ACTIVE",
+            )
+        finally:
+            app.extensions["stop_background_tasks"]()
+
+    def test_startup_resolves_old_active_incident_and_keeps_history(self):
+        database = Path(self.temp_dir.name) / "startup-stale.db"
+        store = IncidentStore(database)
+        timestamp = self.current_timestamp(400)
+        event = {
+            "event_id": "startup-stale",
+            "timestamp": timestamp,
+            "source": "physical_ml",
+            "event_type": "physical",
+            "severity": "high",
+            "anomaly_score": 1.0,
+            "evidence": {},
+        }
+        store.save_incident({
+            "incident_id": "INC-STARTUP-STALE",
+            "asset_id": "PLC-01",
+            "start_time": timestamp,
+            "end_time": timestamp,
+            "last_event_time": timestamp,
+            "status": "ACTIVE",
+            "risk_level": "CRITICAL",
+            "risk_score": 1.0,
+            "risk_assessment": {},
+            "events": [event],
+        }, [event])
+        app = create_app(
+            plc_host="127.0.0.1",
+            plc_port=1,
+            database=str(database),
+        )
+        try:
+            incident = store.get_incident("INC-STARTUP-STALE")
+            self.assertEqual(incident["status"], "RESOLVED")
+            self.assertEqual(incident["resolved_reason"], "stale at startup")
+            self.assertTrue(app.test_client().get("/api/risk").get_json()["popup_candidates"] == [])
+            self.assertEqual(
+                app.test_client().get("/api/incidents").get_json()["incidents"][0]["incident_id"],
+                "INC-STARTUP-STALE",
+            )
+        finally:
+            app.extensions["stop_background_tasks"]()
+
+    def test_normal_readings_cancel_countdown_and_resolve_after_30_seconds(self):
+        app = self.app
+        client = self.client
+        incident_id = self._post_critical_incident()
+        self.assertIn(incident_id, app.extensions["p6_stop_timers"])
+
+        normal_state = {
+            "temperature": 65.0,
+            "pressure": 3.5,
+            "power": 11.0,
+            "rpm": 1400,
+        }
+        lifecycle_check = app.extensions["incident_lifecycle_check"]
+        lifecycle_check(normal_state, now=100.0)
+        self.assertNotIn(incident_id, app.extensions["p6_stop_timers"])
+        lifecycle_check(normal_state, now=129.0)
+        self.assertEqual(
+            IncidentStore(Path(self.temp_dir.name) / "hmi.db")
+            .get_incident(incident_id)["status"],
+            "ACTIVE",
+        )
+        lifecycle_check(normal_state, now=130.0)
+        self.assertEqual(
+            IncidentStore(Path(self.temp_dir.name) / "hmi.db")
+            .get_incident(incident_id)["resolved_reason"],
+            "readings_normal",
+        )
+        events = client.get("/api/events").get_json()
+        self.assertIn("P6_AUTO_CANCELLED", [event["event_type"] for event in events])
+
+    def test_fresh_critical_incident_auto_stops_after_configured_delay(self):
+        app = create_app(
+            plc_host="127.0.0.1",
+            plc_port=1,
+            database=str(Path(self.temp_dir.name) / "auto-stop.db"),
+        )
+        app.config.update(TESTING=True, P6_AUTO_STOP_SECONDS=0.05)
+        registers = [1, 1400, 1400, 9000, 350, 1100, 0, 0, 15]
+
+        class FakeClient:
+            def read_holding_registers(self, address, count, slave):
+                return SimpleNamespace(
+                    isError=lambda: False,
+                    registers=registers[address:address + count],
+                )
+
+            def write_registers(self, address, values, slave):
+                registers[address:address + len(values)] = values
+                return SimpleNamespace(isError=lambda: False)
+
+            def write_register(self, address, value, slave):
+                registers[address] = value
+                return SimpleNamespace(isError=lambda: False)
+
+        fake_client = FakeClient()
+        client = app.test_client()
+        client.environ_base["HTTP_X_INGEST_TOKEN"] = app.config["INGEST_TOKEN"]
+        try:
+            with patch.object(
+                DeviceConnection,
+                "call",
+                autospec=True,
+                side_effect=lambda _device, action: action(fake_client),
+            ):
+                response = client.post("/api/risk/events", json={"events": [
+                    {
+                        "event_id": "auto-stop-network",
+                        "timestamp": self.current_timestamp(2),
+                        "source": "network_model",
+                        "asset_id": "PLC-01",
+                        "event_type": "network",
+                        "severity": "high",
+                        "anomaly_score": 1.0,
+                        "evidence": {},
+                    },
+                    {
+                        "event_id": "auto-stop-physical",
+                        "timestamp": self.current_timestamp(),
+                        "source": "physical_ml",
+                        "asset_id": "PLC-01",
+                        "event_type": "physical",
+                        "severity": "high",
+                        "anomaly_score": 1.0,
+                        "evidence": {},
+                    },
+                ]})
+                self.assertEqual(response.status_code, 200)
+                risk_summary = client.get("/api/risk").get_json()
+                self.assertEqual(risk_summary["popup_candidates"][0]["risk_level"], "CRITICAL")
+                self.assertTrue(risk_summary["popup_candidates"][0]["is_fresh"])
+                self.assertTrue(risk_summary["popup_candidates"][0]["auto_stop_at"])
+                import time
+
+                time.sleep(0.2)
+            self.assertEqual(registers[0], 0)
+            self.assertEqual(registers[8], 0)
+            events = client.get("/api/events").get_json()
+            self.assertIn("P6_SIMULATED_STOP", [event["event_type"] for event in events])
+        finally:
+            app.extensions["stop_background_tasks"]()
 
 
 if __name__ == "__main__":

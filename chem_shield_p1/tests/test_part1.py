@@ -1,6 +1,9 @@
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 
 from chem_shield_p1.data.store import TelemetryStore
 from chem_shield_p1.events.abnormal_events import event_record
@@ -19,6 +22,7 @@ from chem_shield_p1.plc.register_map import (
 from chem_shield_p1.process.main import (
     apply_simulation_overrides,
     cap_uncommanded_values,
+    run,
 )
 from chem_shield_p1.process.machine import (
     MAX_SIMULATED_POWER_KW,
@@ -31,6 +35,41 @@ from chem_shield_p1.process import modbus_server
 
 
 class PartOneTests(unittest.TestCase):
+    def test_process_simulator_reports_plc_connection_failure(self):
+        output = StringIO()
+        with tempfile.TemporaryDirectory() as directory:
+            with patch("chem_shield_p1.process.main.ModbusTcpClient") as plc_client:
+                client = plc_client.return_value
+                client.connect.return_value = False
+                with redirect_stderr(output), self.assertRaises(SystemExit) as error:
+                    run("127.0.0.1", 15020, 0.5, str(Path(directory) / "telemetry.db"))
+
+        self.assertEqual(error.exception.code, 1)
+        self.assertIn("Start the PLC first", output.getvalue())
+        client.close.assert_called_once()
+
+    def test_process_simulator_reports_connected_plc_and_database(self):
+        output = StringIO()
+        with tempfile.TemporaryDirectory() as directory:
+            database = str(Path(directory) / "telemetry.db")
+            with (
+                patch("chem_shield_p1.process.main.ModbusTcpClient") as plc_client,
+                patch(
+                    "chem_shield_p1.process.main.read_registers",
+                    side_effect=KeyboardInterrupt,
+                ),
+            ):
+                client = plc_client.return_value
+                client.connect.return_value = True
+                with redirect_stdout(output), self.assertRaises(KeyboardInterrupt):
+                    run("127.0.0.1", 15020, 0.5, database)
+
+        self.assertIn(
+            f"Process simulator connected to PLC at 127.0.0.1:15020, writing telemetry to {database}",
+            output.getvalue(),
+        )
+        client.close.assert_called_once()
+
     def test_modbus_server_module_imports(self):
         self.assertTrue(callable(modbus_server.create_context))
 

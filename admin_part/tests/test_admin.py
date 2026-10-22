@@ -425,6 +425,12 @@ def test_remote_bind_requires_opt_in_and_explicit_secret():
     assert options["cookie_secure"] is True
 
 
+def test_admin_port_can_be_configured_by_environment():
+    assert server_options({"CHEM_SHIELD_ADMIN_PORT": "5002"})["port"] == 5002
+    with pytest.raises(ValueError, match="CHEM_SHIELD_ADMIN_PORT"):
+        server_options({"CHEM_SHIELD_ADMIN_PORT": "70000"})
+
+
 def test_hmi_url_validation_allows_http_s_but_rejects_embedded_secrets():
     assert _safe_hmi_url("https://localhost:15000") == (
         "https://localhost:15000"

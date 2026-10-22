@@ -30,35 +30,38 @@ later lab setup without changing the HMI or process client.
 
 Python 3.10+ is recommended.
 
-Install the project dependencies from the repository root so the operator HMI
-and admin console are both available:
+From the repository root, create the environment and install the dependencies
+once:
 
 ```bash
 python3 -m venv chem_shield_p1/.venv
 chem_shield_p1/.venv/bin/python -m pip install -r requirements.txt
 ```
 
-This is the way the project was run during implementation: open three
-terminals from the repository root and run one command in each terminal:
+## Start the virtual machine
+
+Open three terminals in the repository root. Start the PLC first, then the
+process simulator, then the HMI. Keep all three terminals open.
+
+**Terminal 1 — start the virtual PLC:**
 
 ```bash
 chem_shield_p1/.venv/bin/python -m chem_shield_p1.plc.modbus_plc --host 127.0.0.1 --port 15020
 ```
 
-
-
+**Terminal 2 — start the process simulator:**
 ```bash
 chem_shield_p1/.venv/bin/python -m chem_shield_p1.process.main --host 127.0.0.1 --port 15020 --database chem_shield_p1/data/telemetry.db
 ```
 
+**Terminal 3 — start the HMI:**
 ```bash
 chem_shield_p1/.venv/bin/python -m chem_shield_p1.hmi.app --host 127.0.0.1 --port 15000 --plc-port 15020 --database chem_shield_p1/data/telemetry.db
 ```
 
-Then open `http://127.0.0.1:15000`.
-Press START and watch the RPM ramp toward the
-target. STOP demonstrates the gradual coast-down and cooling response. The
-TEST MODE controls generate simulation-only ground-truth events.
+Then open **http://127.0.0.1:15000**. Press **START** to run the simulated
+motor and **STOP** to stop it. Use **PAUSE** to pause, and **APPLY TARGET** to
+change the simulated RPM target.
 
 The operator HMI dedicates its full viewport to the virtual machine, live
 process history, and controls. Detector risk and the persistent incident
@@ -68,27 +71,44 @@ The operator console shows the PLC connection state, actual and target RPM,
 temperature, pressure, power, operator command history, and the latest machine
 events. Commands and test events are disabled while the PLC is offline.
 For an active CRITICAL incident, acknowledging the HMI warning opens a
-second stop prompt. The HMI starts its 15-second fallback timer as soon as the
-incident becomes CRITICAL; acknowledging does not reset the countdown.
-Selecting **STOP MACHINE NOW** stops the loopback virtual PLC immediately; if
-the operator dismisses or does not act on the prompt, the HMI applies the same
-simulated stop when the original countdown expires. The countdown is managed by
-the HMI server, so it continues if the prompt is dismissed or the browser tab
-is closed while that server remains running. This is limited to the loopback
-simulator, does not contact physical equipment, and does not restart the machine
-automatically.
+second stop prompt. The alert and acknowledgment do not stop the machine.
+Selecting **STOP MACHINE NOW** or the operator **STOP** control sends an
+explicit stop command to the loopback simulator. A fresh critical condition
+also starts a guarded automatic stop countdown (15 minutes by default); it is
+cancelled if readings return to normal. Dismissing the prompt leaves the
+simulator running until the timer expires or an operator stops it. The machine
+does not restart automatically. This does not contact physical equipment.
 Both operator STOP and the Part 6 simulated stop also clear the override mask,
 disabling all four Attack Console values (temperature, pressure, power, and
 speed) and resetting the test event.
 Its live process-condition badge reads CRITICAL when temperature exceeds
 70 °C, pressure exceeds 4 bar, power exceeds 12 kW, or speed exceeds 1500 rpm.
-At or below all upper limits it reads NORMAL. This is an alert-only simulation
-status and does not stop the machine. The separate Part 4 incident-risk score
-is unchanged. The normal process model targets fluctuating readings below the
+With no current limit alert or fresh HIGH/CRITICAL incident it reads
+**NO ACTIVE PROBLEM**. The normal process model targets fluctuating readings below the
 upper operating limits rather than holding at them, and event stimuli remain
 capped at 70 °C, 4 bar, 12 kW, and 1500 rpm. An explicit value submitted from
 the Attack Console can set a higher simulated value until that override is
 cleared.
+
+Set `CHEM_SHIELD_AUTO_STOP_SECONDS=20` in the HMI's environment for a short
+automatic-stop test. The default is 900 seconds (15 minutes). Historical,
+replayed, and old events remain in incident history but cannot arm warnings or
+the stop timer. When live readings stay inside limits for 30 seconds, related
+incidents are resolved and any active countdown is cancelled.
+
+For the complete startup sequence and port troubleshooting, see the
+[repository startup instructions](../README.md#start-the-complete-virtual-machine).
+The one-command launcher is:
+
+```bash
+chem_shield_p1/.venv/bin/python scripts/run_all.py
+```
+
+Stop services started outside the launcher with:
+
+```bash
+chem_shield_p1/.venv/bin/python scripts/stop_all.py
+```
 
 ## Register map
 

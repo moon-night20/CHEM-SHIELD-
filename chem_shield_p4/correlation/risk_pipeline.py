@@ -9,11 +9,11 @@ from typing import Any, Dict, List, Optional
 
 try:
     from .correlation_engine import CorrelationEngine
-    from .incident_store import IncidentStore
+    from .incident_store import IncidentStore, is_fresh
     from .validator import EventValidator
 except ImportError:
     from correlation_engine import CorrelationEngine
-    from incident_store import IncidentStore
+    from incident_store import IncidentStore, is_fresh
     from validator import EventValidator
 
 try:
@@ -108,11 +108,13 @@ class RiskPipeline:
                 "asset_id": group.asset_id,
                 "start_time": min(event["timestamp"] for event in merged_events),
                 "end_time": max(event["timestamp"] for event in merged_events),
+                "last_event_time": max(event["timestamp"] for event in merged_events),
                 "risk_level": assessment["risk_level"] if assessment else "UNASSESSED",
                 "risk_score": assessment["final_risk"] if assessment else None,
                 "risk_assessment": assessment,
                 "events": merged_events,
             }
+            incident["status"] = "ACTIVE" if is_fresh(incident) else "HISTORICAL"
             saved_ids = self.store.save_incident(incident, new_events)
             if saved_ids:
                 accepted_ids.extend(saved_ids)

@@ -47,6 +47,7 @@ class PipelineIntegrationTests(unittest.TestCase):
                 },
                 headers={"X-Ingest-Token": app.config["INGEST_TOKEN"]},
             )
+            app.extensions["stop_background_tasks"]()
 
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()

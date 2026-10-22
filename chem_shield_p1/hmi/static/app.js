@@ -7,11 +7,12 @@ let selectedFocus = 'temperature';
 let alertIncidentId = null;
 let alertIncidentIsCritical = false;
 let lastNotifiedIncident = null;
+let initialRiskLoaded = false;
+let currentRiskSummary = null;
+let currentMachineState = null;
+let alertIsMachineCondition = false;
 let refreshPending = false;
 let riskRefreshPending = false;
-let p6CountdownDeadline = null;
-let p6CountdownInterval = null;
-let p6CountdownStage = null;
 const p6ConfirmToken = document.querySelector('meta[name="p6-confirm-token"]').content;
 
 const focusConfig = {
@@ -80,6 +81,7 @@ function setNetworkStatus(connection) {
 }
 
 function setState(state) {
+  currentMachineState = state;
   const running = state.motor_status === 'RUNNING';
   const condition = state.machine_condition || 'NORMAL';
   const limitAlerts = state.limit_alerts || [];
@@ -93,20 +95,10 @@ function setState(state) {
   conditionDetails.hidden = limitAlerts.length === 0;
   conditionDetails.textContent = limitAlerts.map((alert) => alert.message).join(' · ');
   window.ChemShieldP6WarningPopup.machineState(state);
+  updateProblemStatus();
   $('state-label').textContent = state.motor_status;
   $('command-state').textContent = state.motor_status;
   $('state-badge').className = `state-badge ${running ? 'running' : state.motor_status === 'PAUSED' ? 'paused' : 'stopped'}`;
-  if (p6CountdownDeadline !== null
-      && Date.now() >= p6CountdownDeadline
-      && state.motor_status === 'STOPPED') {
-    stopP6Countdown();
-    $('risk-alert-message').textContent =
-      'The HMI confirms the loopback simulator is stopped. It will not restart automatically.';
-    $('risk-alert-sim-stop').disabled = true;
-    $('risk-alert-sim-stop').textContent = 'SIMULATOR STOPPED';
-    $('risk-alert-p6-message').textContent =
-      'The loopback simulator is stopped. No physical device was contacted.';
-  }
   const targetRpm = Math.min(1450, Math.round(state.target_rpm));
   $('target-input').value = targetRpm;
   $('target-range').value = targetRpm;
@@ -115,6 +107,7 @@ function setState(state) {
 }
 
 function renderEvents(events) {
+  window.ChemShieldP6WarningPopup.eventWarnings(events);
   if (!$('event-count') || !$('event-list')) return;
   $('event-count').textContent = `${events.length} EVENT${events.length === 1 ? '' : 'S'}`;
   if (!events.length) {
@@ -122,9 +115,6 @@ function renderEvents(events) {
     return;
   }
 
-  function checkEventWarnings(events) {
-    window.ChemShieldP6WarningPopup.eventWarnings(events);
-  }
   $('event-list').innerHTML = events.map((event) => {
     const time = new Date(event.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
     const title = event.event_type.replaceAll('_', ' ');
@@ -146,20 +136,89 @@ async function getJson(url, options) {
   }
 }
 
-function maybeShowRiskAlert(summary) {
-  const riskRank = {MEDIUM: 1, HIGH: 2, CRITICAL: 3};
-  const incident = (summary.active_incidents || [])
-    .filter((item) => !item.acknowledged && item.risk_level in riskRank)
+function updateProblemStatus() {
+  const machineProblem = currentMachineState?.machine_condition === 'CRITICAL';
+  const activeRisk = (currentRiskSummary?.active_incidents || []).some((item) =>
+    item.is_fresh && ['HIGH', 'CRITICAL'].includes(item.risk_level)
+  );
+  const badge = $('machine-condition');
+  if (machineProblem) {
+    badge.textContent = 'CRITICAL';
+    badge.className = 'machine-condition critical';
+  } else if (activeRisk) {
+    badge.textContent = 'ACTIVE RISK';
+    badge.className = 'machine-condition critical';
+  } else {
+    badge.textContent = currentMachineState ? 'NO ACTIVE PROBLEM' : 'WAITING FOR LIVE STATE';
+    badge.className = 'machine-condition normal';
+    window.ChemShieldP6WarningPopup.clearWarnings();
+  }
+}
+
+function maybeShowRiskAlert(summary, state) {
+  const liveAlerts = state?.machine_condition === 'CRITICAL'
+    ? (state.limit_alerts || [])
+    : [];
+  const riskRank = {HIGH: 2, CRITICAL: 3};
+  if (!initialRiskLoaded) {
+    for (const item of summary.popup_candidates || []) {
+      seenInitialIncidentKeys.add(`${item.incident_id}:${item.risk_level}`);
+    }
+    initialRiskLoaded = true;
+  }
+
+  if (liveAlerts.length) {
+    const key = `live-machine:${liveAlerts.map((alert) => alert.sensor).sort().join('|')}`;
+    if (key === lastNotifiedIncident || $('risk-alert-dialog').open) return;
+    lastNotifiedIncident = key;
+    alertIncidentId = null;
+    alertIncidentIsCritical = true;
+    alertIsMachineCondition = true;
+    $('risk-alert-title').textContent = 'LIVE MACHINE LIMIT EXCEEDED';
+    $('risk-alert-message').textContent =
+      'Current machine readings exceed configured limits. Stop the loopback simulator now or allow the automatic stop countdown to continue.';
+    $('risk-alert-trigger').textContent = liveAlerts.map((alert) => alert.message).join(' · ');
+    $('risk-alert-ack').hidden = true;
+    $('risk-alert-sim-stop').hidden = false;
+    $('risk-alert-sim-stop').disabled = false;
+    $('risk-alert-close').textContent = 'DISMISS';
+    $('risk-alert-countdown').hidden = !summary.auto_stop_at;
+    $('risk-alert-countdown').dataset.deadline = summary.auto_stop_at || '';
+    $('risk-alert-p6-message').textContent = summary.auto_stop_at
+      ? 'The automatic stop is cancelled if readings return to normal. Operator STOP also clears all simulated overrides.'
+      : 'No automatic stop is armed for this live limit warning. Operator STOP clears all simulated overrides.';
+    $('risk-alert-dialog').showModal();
+    return;
+  }
+  if (alertIsMachineCondition) {
+    if ($('risk-alert-dialog').open) $('risk-alert-dialog').close();
+    alertIsMachineCondition = false;
+    alertIncidentId = null;
+  }
+
+  const incident = (summary.popup_candidates || [])
+    .filter((item) => item.risk_level in riskRank
+      && !item.acknowledged
+      && item.is_fresh
+      && Number.isFinite(Date.parse(item.last_event_time)))
     .sort((left, right) => (
       riskRank[right.risk_level] - riskRank[left.risk_level]
       || (right.risk_score || 0) - (left.risk_score || 0)
     ))[0];
+  if (alertIncidentId && !summary.active_incidents?.some(
+    (item) => item.incident_id === alertIncidentId
+  )) {
+    if ($('risk-alert-dialog').open) $('risk-alert-dialog').close();
+    alertIncidentId = null;
+  }
   if (!incident) return;
   const key = `${incident.incident_id}:${incident.risk_level}`;
-  if (key === lastNotifiedIncident || $('risk-alert-dialog').open) return;
+  if (seenInitialIncidentKeys.has(key) || key === lastNotifiedIncident
+    || $('risk-alert-dialog').open) return;
   lastNotifiedIncident = key;
   alertIncidentId = incident.incident_id;
   alertIncidentIsCritical = incident.risk_level === 'CRITICAL';
+  alertIsMachineCondition = false;
   $('risk-alert-title').textContent = `${incident.risk_level} RISK INCIDENT`;
   const score = Number(incident.risk_score);
   const scoreText = incident.risk_score == null || !Number.isFinite(score)
@@ -178,17 +237,43 @@ function maybeShowRiskAlert(summary) {
   stopButton.disabled = false;
   stopButton.textContent = 'STOP MACHINE NOW';
   $('risk-alert-ack').hidden = false;
+  $('risk-alert-countdown').hidden = !incident.auto_stop_at;
+  $('risk-alert-countdown').dataset.deadline = incident.auto_stop_at || '';
   $('risk-alert-close').textContent = 'CLOSE';
-  if (alertIncidentIsCritical && incident.p6_auto_stop_status === 'countdown'
-      && incident.p6_auto_stop_remaining_seconds != null) {
-    startP6Countdown(incident.p6_auto_stop_remaining_seconds, 'warning');
-  } else {
-    stopP6Countdown();
-    $('risk-alert-p6-message').textContent = alertIncidentIsCritical
-      ? 'The automatic simulated stop is unavailable. Verify the loopback simulator and use its STOP control.'
-      : 'Part 6 offers a simulated stop only for an active CRITICAL incident.';
-  }
+  $('risk-alert-p6-message').textContent = alertIncidentIsCritical
+    ? 'An automatic stop countdown is active while the critical condition remains current. Acknowledge to open the operator stop prompt.'
+    : 'Part 6 offers a simulated stop only for an active CRITICAL incident.';
   $('risk-alert-dialog').showModal();
+}
+
+const seenInitialIncidentKeys = new Set();
+
+function updateCountdown() {
+  const element = $('risk-alert-countdown');
+  if (!element || element.hidden || !element.dataset.deadline) return;
+  const remaining = Math.max(
+    0,
+    Math.ceil((Date.parse(element.dataset.deadline) - Date.now()) / 1000),
+  );
+  const minutes = Math.floor(remaining / 60);
+  const seconds = remaining % 60;
+  element.textContent = `AUTOMATIC STOP IN ${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+function syncRiskCountdown(summary) {
+  const element = $('risk-alert-countdown');
+  if (!element) return;
+  const incident = alertIncidentId
+    ? (summary.active_incidents || []).find(
+      (item) => item.incident_id === alertIncidentId,
+    )
+    : null;
+  const deadline = alertIsMachineCondition
+    ? summary.auto_stop_at
+    : incident?.auto_stop_at;
+  element.hidden = !deadline;
+  element.dataset.deadline = deadline || '';
+  if (deadline) updateCountdown();
 }
 
 async function refreshRisk() {
@@ -196,8 +281,11 @@ async function refreshRisk() {
   riskRefreshPending = true;
   try {
     const summary = await getJson('/api/risk');
+    currentRiskSummary = summary;
     window.ChemShieldP6WarningPopup.riskWarnings(summary);
-    maybeShowRiskAlert(summary);
+    updateProblemStatus();
+    maybeShowRiskAlert(summary, currentMachineState);
+    syncRiskCountdown(summary);
   } catch (error) {
     console.warn('Risk alert check failed:', error);
   } finally {
@@ -208,11 +296,18 @@ async function refreshRisk() {
 async function refresh() {
   if (refreshPending) return;
   refreshPending = true;
-  void refreshRisk();
   try {
-    const [state, events, connection] = await Promise.all([getJson('/api/state'), getJson('/api/events'), getJson('/api/connection')]);
+    const [state, events, connection, risk] = await Promise.all([
+      getJson('/api/state'), getJson('/api/events'), getJson('/api/connection'),
+      getJson('/api/risk'),
+    ]);
     setConnection(true); setState(state); renderEvents(events);
     setNetworkStatus(connection);
+    currentRiskSummary = risk;
+    window.ChemShieldP6WarningPopup.riskWarnings(risk);
+    updateProblemStatus();
+    maybeShowRiskAlert(risk, state);
+    syncRiskCountdown(risk);
     $('last-update').textContent = `UPDATED ${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'})}`;
   } catch (error) {
     setConnection(false); setNetworkStatus({status: 'CONNECTION ERROR', error: error.message}); console.warn(error);
@@ -240,85 +335,54 @@ async function acknowledgeIncident(incidentId) {
       $('risk-alert-dialog').close();
     }
     await refreshRisk();
-    if (alertIncidentIsCritical && result.p6_auto_stop_armed) {
-      showP6StopPrompt(
-        result.p6_countdown_seconds,
-        result.p6_auto_stop_status === 'stopped',
-      );
+    if (alertIncidentIsCritical && result.p6_response_available) {
+      showP6StopPrompt();
     }
   } catch (error) {
     $('risk-alert-message').textContent = `Acknowledgement failed: ${error.message}`;
   }
 }
 
-function startP6Countdown(countdownSeconds, stage) {
-  const seconds = Math.max(0, Number(countdownSeconds) || 0);
-  p6CountdownDeadline = Date.now() + seconds * 1000;
-  p6CountdownStage = stage;
-  window.clearInterval(p6CountdownInterval);
-  updateP6Countdown();
-  p6CountdownInterval = window.setInterval(updateP6Countdown, 1000);
-}
-
-function stopP6Countdown() {
-  window.clearInterval(p6CountdownInterval);
-  p6CountdownInterval = null;
-  p6CountdownDeadline = null;
-  p6CountdownStage = null;
-}
-
-function updateP6Countdown() {
-  if (p6CountdownDeadline === null) return;
-  const remaining = Math.max(0, Math.ceil((p6CountdownDeadline - Date.now()) / 1000));
-  $('risk-alert-p6-message').textContent = remaining > 0
-    ? p6CountdownStage === 'stop'
-      ? `Automatic simulated stop in ${remaining} second${remaining === 1 ? '' : 's'}. Dismissing this prompt does not cancel the stop.`
-      : `Automatic simulated stop in ${remaining} second${remaining === 1 ? '' : 's'} from the critical warning. Acknowledge to review the stop prompt.`
-    : 'Automatic stop is due. Verify the simulator state; use STOP MACHINE NOW if it is still running.';
-}
-
-function showP6StopPrompt(countdownSeconds, alreadyStopped = false) {
+function showP6StopPrompt() {
   $('risk-alert-title').textContent = 'STOP THE MACHINE NOW';
-  $('risk-alert-message').textContent = alreadyStopped
-    ? 'Acknowledgment recorded. The HMI has already stopped the loopback simulator. Verify that the machine state is STOPPED.'
-    : 'Acknowledgment recorded. Stop the simulated machine now, or the HMI will stop it automatically when the countdown ends.';
+  $('risk-alert-message').textContent =
+    'Acknowledgment recorded. Press STOP MACHINE NOW to stop the loopback simulator. Closing this prompt will leave the simulator running.';
   $('risk-alert-ack').hidden = true;
   $('risk-alert-sim-stop').hidden = false;
-  $('risk-alert-sim-stop').disabled = alreadyStopped;
-  $('risk-alert-sim-stop').textContent = alreadyStopped
-    ? 'SIMULATOR STOPPED'
-    : 'STOP MACHINE NOW';
+  $('risk-alert-sim-stop').disabled = false;
+  $('risk-alert-sim-stop').textContent = 'STOP MACHINE NOW';
   $('risk-alert-close').textContent = 'DISMISS';
-  if (alreadyStopped) {
-    stopP6Countdown();
-    $('risk-alert-p6-message').textContent =
-      'The loopback simulator is stopped. It will not restart automatically.';
-  } else {
-    startP6Countdown(countdownSeconds, 'stop');
-  }
+  $('risk-alert-p6-message').textContent =
+    'The automatic stop countdown remains active while the critical condition is current. Confirm STOP MACHINE NOW to stop immediately.';
   $('risk-alert-dialog').showModal();
 }
 
 async function confirmSimulatedStop() {
   const button = $('risk-alert-sim-stop');
-  if (!alertIncidentId || button.disabled) return;
+  if (button.disabled) return;
   button.disabled = true;
   try {
-    const result = await getJson('/api/p6/respond', {
-      method:'POST',
-      headers:{
-        'Content-Type':'application/json',
-        'X-Chem-Shield-P6-Confirmation':p6ConfirmToken,
-      },
-      body:JSON.stringify({incident_id:alertIncidentId, confirm_stop:true}),
-    });
-    $('risk-alert-message').textContent = result.simulation_only
-      ? 'Simulation only: the local virtual machine recorded the stop. No physical device was contacted.'
+    const result = alertIncidentId
+      ? await getJson('/api/p6/respond', {
+        method:'POST',
+        headers:{
+          'Content-Type':'application/json',
+          'X-Chem-Shield-P6-Confirmation':p6ConfirmToken,
+        },
+        body:JSON.stringify({incident_id:alertIncidentId, confirm_stop:true}),
+      })
+      : await getJson('/api/control', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({action:'stop'}),
+      });
+    $('risk-alert-message').textContent = result.simulation_only || alertIsMachineCondition
+      ? 'Simulation only: the local virtual machine recorded the stop and cleared simulated overrides.'
       : 'Part 6 response recorded.';
     button.textContent = 'SIMULATED STOP RECORDED';
-    stopP6Countdown();
     $('risk-alert-p6-message').textContent =
       'The loopback simulator has been stopped. It will not restart automatically.';
+    $('risk-alert-countdown').hidden = true;
     await refresh();
   } catch (error) {
     $('risk-alert-message').textContent = `Simulated stop was not confirmed: ${error.message}`;
@@ -379,9 +443,7 @@ $('risk-alert-ack').addEventListener('click', () => {
 $('risk-alert-sim-stop').addEventListener('click', () => void confirmSimulatedStop());
 $('risk-alert-close').addEventListener('click', () => {
   $('risk-alert-dialog').close();
-  if (!p6CountdownInterval) {
-    $('risk-alert-close').textContent = 'CLOSE';
-  }
+  $('risk-alert-close').textContent = 'CLOSE';
 });
 
 setConnection(false); setNetworkStatus({status:'DISCONNECTED', error:'Not connected'}); refresh(); setInterval(refresh, 1000);

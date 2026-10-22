@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 import time
 from datetime import datetime, timezone
 
@@ -77,7 +78,19 @@ def run(host: str, port: int, interval: float, database: str) -> None:
     unit = ProcessUnit()
     store = TelemetryStore(database)
     if not client.connect():
-        raise ConnectionError(f"Could not connect to PLC at {host}:{port}")
+        client.close()
+        print(
+            f"ERROR: Process simulator could not connect to PLC at {host}:{port}. "
+            "Start the PLC first, then start the process simulator.",
+            file=sys.stderr,
+            flush=True,
+        )
+        raise SystemExit(1)
+    print(
+        f"Process simulator connected to PLC at {host}:{port}, "
+        f"writing telemetry to {database}",
+        flush=True,
+    )
     try:
         while True:
             registers = read_registers(client)

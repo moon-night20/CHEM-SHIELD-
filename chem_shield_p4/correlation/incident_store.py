@@ -13,6 +13,21 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def is_fresh(incident: Dict[str, Any], max_age_seconds: float = 120) -> bool:
+    """Return whether the incident's newest event timestamp is current."""
+    timestamp = incident.get("last_event_time")
+    if not isinstance(timestamp, str):
+        return False
+    try:
+        event_time = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if event_time.tzinfo is None:
+        return False
+    age = (datetime.now(timezone.utc) - event_time).total_seconds()
+    return 0 <= age < max_age_seconds
+
+
 def _json(value: Any) -> str:
     return json.dumps(value, separators=(",", ":"), sort_keys=True, allow_nan=False)
 
@@ -70,6 +85,18 @@ class IncidentStore:
                 connection.execute(
                     "ALTER TABLE risk_ingest_state ADD COLUMN last_accepted_at TEXT"
                 )
+            incident_columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(risk_incidents)")
+            }
+            if "resolved_at" not in incident_columns:
+                connection.execute(
+                    "ALTER TABLE risk_incidents ADD COLUMN resolved_at TEXT"
+                )
+            if "resolved_reason" not in incident_columns:
+                connection.execute(
+                    "ALTER TABLE risk_incidents ADD COLUMN resolved_reason TEXT"
+                )
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path, timeout=10)
@@ -117,13 +144,14 @@ class IncidentStore:
                 INSERT OR IGNORE INTO risk_incidents (
                     incident_id, asset_id, start_time, end_time, status, risk_level,
                     risk_score, risk_assessment_json, events_json, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     incident["incident_id"],
                     incident["asset_id"],
                     incident["start_time"],
                     incident["end_time"],
+                    incident.get("status", "ACTIVE"),
                     incident["risk_level"],
                     incident.get("risk_score"),
                     _json(incident.get("risk_assessment")),
@@ -152,7 +180,7 @@ class IncidentStore:
                     UPDATE risk_incidents SET
                         start_time=MIN(start_time, ?),
                         end_time=MAX(end_time, ?),
-                        status='ACTIVE',
+                        status=?,
                         risk_level=?,
                         risk_score=?,
                         risk_assessment_json=?,
@@ -163,6 +191,7 @@ class IncidentStore:
                     (
                         incident["start_time"],
                         incident["end_time"],
+                        incident.get("status", "ACTIVE"),
                         incident["risk_level"],
                         incident.get("risk_score"),
                         _json(incident.get("risk_assessment")),
@@ -183,20 +212,67 @@ class IncidentStore:
     def get_incident(self, incident_id: str) -> Optional[dict]:
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT * FROM risk_incidents WHERE incident_id=?", (incident_id,)
+                """
+                SELECT i.*,
+                    (SELECT MAX(e.timestamp) FROM risk_events e
+                     WHERE e.incident_id=i.incident_id) AS last_event_time
+                FROM risk_incidents i WHERE i.incident_id=?
+                """,
+                (incident_id,),
             ).fetchone()
         return self._incident_row(row) if row else None
 
     def list_incidents(self, limit: int = 50, active_only: bool = False) -> List[dict]:
-        query = "SELECT * FROM risk_incidents"
+        query = """
+            SELECT i.*,
+                (SELECT MAX(e.timestamp) FROM risk_events e
+                 WHERE e.incident_id=i.incident_id) AS last_event_time
+            FROM risk_incidents i
+        """
         params: list[Any] = []
         if active_only:
-            query += " WHERE status='ACTIVE'"
-        query += " ORDER BY updated_at DESC LIMIT ?"
+            query += " WHERE i.status='ACTIVE'"
+        query += " ORDER BY i.updated_at DESC LIMIT ?"
         params.append(limit)
         with self._connect() as connection:
             rows = connection.execute(query, params).fetchall()
         return [self._incident_row(row) for row in rows]
+
+    def resolve_incident(self, incident_id: str, reason: str) -> bool:
+        """Resolve one active incident and retain its history."""
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE risk_incidents SET status='RESOLVED', resolved_at=?, "
+                "resolved_reason=?, updated_at=? "
+                "WHERE incident_id=? AND status='ACTIVE'",
+                (_utc_now(), reason, _utc_now(), incident_id),
+            )
+        return cursor.rowcount > 0
+
+    def resolve_stale(self, max_age_seconds: float, reason: str) -> int:
+        """Resolve active incidents with no recent event or update."""
+        if max_age_seconds < 0:
+            raise ValueError("max_age_seconds must not be negative")
+        cutoff = datetime.fromtimestamp(
+            datetime.now(timezone.utc).timestamp() - max_age_seconds,
+            timezone.utc,
+        ).isoformat().replace("+00:00", "Z")
+        now = _utc_now()
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE risk_incidents
+                SET status='RESOLVED', resolved_at=?, resolved_reason=?, updated_at=?
+                WHERE status='ACTIVE'
+                  AND julianday(COALESCE(
+                      (SELECT MAX(e.timestamp) FROM risk_events e
+                       WHERE e.incident_id=risk_incidents.incident_id),
+                      updated_at
+                  )) < julianday(?)
+                """,
+                (now, reason, now, cutoff),
+            )
+        return cursor.rowcount
 
     def acknowledge(self, incident_id: str, acknowledged_by: str) -> Optional[dict]:
         with self._connect() as connection:

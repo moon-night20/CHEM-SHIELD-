@@ -7,6 +7,7 @@
   const seenEvents = new Set();
   const seenRisks = new Set();
   let eventsPrimed = false;
+  let risksPrimed = false;
   let currentMachineWarning = null;
 
   function showWarning(level, title, detail) {
@@ -62,7 +63,23 @@
       if (seenEvents.has(key)) continue;
       seenEvents.add(key);
       const severity = String(event.severity || '').toLowerCase();
-      if (event.source !== 'P6' && severity in severityLabels) {
+      const age = Date.now() - Date.parse(event.timestamp);
+      const source = String(event.source || '').toLowerCase();
+      const eventType = String(event.event_type || '').toLowerCase();
+      const historical = event.status === 'HISTORICAL'
+        || event.historical === true
+        || event.replayed === true
+        || /test|fixture|replay/.test(source)
+        || /test|fixture|replay/.test(eventType);
+      if (
+        event.source !== 'P6'
+        && !historical
+        && Number.isFinite(age)
+        && age >= 0
+        && age < 30000
+        && ['high', 'critical'].includes(severity)
+        && ['HIGH', 'CRITICAL'].includes(event.risk_level)
+      ) {
         fresh.push({event, severity});
       }
     }
@@ -81,12 +98,19 @@
 
   function riskWarnings(summary) {
     const fresh = [];
-    for (const incident of summary.active_incidents || []) {
-      if (!['MEDIUM', 'HIGH', 'CRITICAL'].includes(incident.risk_level)) continue;
+    for (const incident of summary.popup_candidates || []) {
+      if (!['HIGH', 'CRITICAL'].includes(incident.risk_level)) continue;
+      if (!incident.is_fresh || !incident.last_event_time) continue;
+      const age = Date.now() - Date.parse(incident.last_event_time);
+      if (!Number.isFinite(age) || age < 0 || age >= 120000) continue;
       const key = `${incident.incident_id}|${incident.risk_level}`;
       if (seenRisks.has(key)) continue;
       seenRisks.add(key);
       fresh.push(incident);
+    }
+    if (!risksPrimed) {
+      risksPrimed = true;
+      return;
     }
     for (const incident of fresh.slice(0, 3)) {
       const level = incident.risk_level.toLowerCase();
@@ -128,6 +152,7 @@
 
   window.ChemShieldP6WarningPopup = Object.freeze({
     autoResponse,
+    clearWarnings: () => { container.replaceChildren(); },
     machineState,
     eventWarnings,
     riskWarnings,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import ipaddress
 import logging
@@ -140,6 +141,12 @@ def _time_windows_overlap(first: dict[str, Any], second: dict[str, Any]) -> bool
 def server_options(environ: dict[str, str] | None = None) -> dict[str, Any]:
     values = os.environ if environ is None else environ
     host = values.get("CHEM_SHIELD_ADMIN_HOST", DEFAULT_ADMIN_HOST).strip()
+    try:
+        port = int(values.get("CHEM_SHIELD_ADMIN_PORT", "5000"))
+    except ValueError as error:
+        raise ValueError("CHEM_SHIELD_ADMIN_PORT must be an integer from 1 to 65535") from error
+    if not 1 <= port <= 65535:
+        raise ValueError("CHEM_SHIELD_ADMIN_PORT must be an integer from 1 to 65535")
     allow_remote = values.get("CHEM_SHIELD_ALLOW_REMOTE") == "1"
     try:
         is_loopback = host == "localhost" or ipaddress.ip_address(host).is_loopback
@@ -162,6 +169,7 @@ def server_options(environ: dict[str, str] | None = None) -> dict[str, Any]:
         )
     return {
         "host": host,
+        "port": port,
         "debug": values.get("CHEM_SHIELD_DEBUG") == "1",
         "secret_key": secret_key or None,
         "cookie_secure": values.get("CHEM_SHIELD_COOKIE_SECURE") == "1",
@@ -772,9 +780,19 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="CHEM-SHIELD local admin console")
+    parser.add_argument("--port", type=int, default=None)
+    args = parser.parse_args()
     options = server_options()
     application = create_app()
     if options["secret_key"]:
         application.config["SECRET_KEY"] = options["secret_key"]
     application.config["SESSION_COOKIE_SECURE"] = options["cookie_secure"]
-    application.run(host=options["host"], port=5000, debug=options["debug"])
+    port = args.port if args.port is not None else options["port"]
+    if not 1 <= port <= 65535:
+        parser.error("--port must be an integer from 1 to 65535")
+    application.run(
+        host=options["host"],
+        port=port,
+        debug=options["debug"],
+    )

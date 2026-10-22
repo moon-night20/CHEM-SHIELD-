@@ -32,11 +32,11 @@ limits are 70 °C, 4 bar, 12 kW, and 1500 RPM. This operational indicator is
 separate from the Part 4 detector score and is not a probability.
 P2 network replay and the P5 physical monitor can explicitly publish scored
 events to the HMI's loopback `POST /api/risk/events` endpoint. No background
-capture is enabled. When an incident becomes CRITICAL, the HMI starts a
-15-second fallback stop timer for the loopback simulator. Acknowledging the
-warning opens a stop prompt but does not reset the timer. The operator can stop
-it immediately; there is no automatic restart or connection to physical
-equipment.
+capture is enabled. Fresh HIGH/CRITICAL incidents and live sensor-limit
+violations can raise warnings. A current CRITICAL condition starts a guarded
+automatic simulated stop countdown (15 minutes by default); returning readings
+to normal cancels it, and the operator can stop the simulator immediately.
+This behavior is simulation-only and never contacts physical equipment.
 
 ## Start the complete virtual machine
 
@@ -75,7 +75,34 @@ already exist, do not create a duplicate; inspect usernames and roles with:
 chem_shield_p1/.venv/bin/python -m admin_part.manage_users list
 ```
 
-### Start the machine (five terminals)
+### Start the machine (recommended: one command)
+
+From the repository root, use the configured virtual-environment interpreter:
+
+```bash
+chem_shield_p1/.venv/bin/python scripts/run_all.py
+```
+
+The launcher checks ports 15020 (PLC), 15000 (HMI), 5000 (Admin), and 5001
+(Attack Console) before starting. If an old CHEM-SHIELD process owns one, it
+prints the PID and command. Only when you are sure the listed process is an
+old CHEM-SHIELD service, opt in to stopping matching service processes with:
+
+```bash
+chem_shield_p1/.venv/bin/python scripts/run_all.py --kill-old
+```
+
+Unrelated processes are never stopped. Press **Ctrl+C** to stop the launched
+services. To stop recognized CHEM-SHIELD services started separately:
+
+```bash
+chem_shield_p1/.venv/bin/python scripts/stop_all.py
+```
+
+To use another Admin port, set `CHEM_SHIELD_ADMIN_PORT` or run
+`chem_shield_p1/.venv/bin/python scripts/run_all.py --admin-port 5002`.
+
+### Start the machine manually (five terminals)
 
 Open five terminals, set each terminal's working directory to the repository
 root, then run one command in each. Start them in this order.
@@ -130,6 +157,11 @@ chem_shield_p1/.venv/bin/python -m admin_part.app
 ```
 
 Open **http://127.0.0.1:5000** and sign in with a local admin-console account.
+If port 5000 is occupied, use
+`chem_shield_p1/.venv/bin/python -m admin_part.app --port 5002` or set
+`CHEM_SHIELD_ADMIN_PORT=5002`. On macOS, port 5000 may be used by AirPlay
+Receiver; turn it off in **System Settings → General → AirDrop & Handoff** or
+select another Admin port.
 Use its Dashboard and Incidents pages for detector risk and incident review;
 the operator machine controls remain on port 15000. The admin Machine page is
 read-only.
@@ -173,7 +205,7 @@ From the repository root, run the cross-platform launcher with the Python
 environment configured above:
 
 ```bash
-python scripts/run_all.py
+chem_shield_p1/.venv/bin/python scripts/run_all.py
 ```
 
 It starts the same five commands in the same order, waits for the virtual PLC
@@ -185,20 +217,29 @@ keep using the five-terminal instructions above.
 ### Stop and restart
 
 To shut down, press **Ctrl+C** in each of the five server terminals. Start
-again in the same order. Use the operator screen's **START** control when you
-are ready to run the simulated motor; detector alerts do not start or stop it.
+again in the same order. Use **START** to run the simulated motor. A current
+critical condition starts the default 15-minute automatic stop countdown;
+override it for a short test with `CHEM_SHIELD_AUTO_STOP_SECONDS=20`. The
+automatic stop is cancelled when live readings return to normal. Old events
+and incidents do not trigger warnings or stop the machine.
 Telemetry and risk incidents are stored locally in
 `chem_shield_p1/data/telemetry.db` and persist when the web server restarts.
 
 ### Troubleshooting startup
 
-- **PLC address already in use:** confirm no other program is using port
-  `15020`. Stop an older copy with **Ctrl+C** in its terminal, then restart
-  Terminal 1.
+- **A service port is already in use:** run the launcher to see the process
+  and PID. Stop a matching old CHEM-SHIELD process with `--kill-old`, or stop
+  it with **Ctrl+C** in its terminal. Do not terminate unrelated processes.
+  The Admin port can be changed with `--admin-port 5002`; macOS AirPlay
+  Receiver commonly uses port 5000.
 - **HMI shows PLC offline:** verify Terminal 1 and Terminal 2 are running on
   `127.0.0.1:15020`, and Terminal 3 was started with `--plc-port 15020`.
-- **Admin page cannot open:** verify Terminal 4 is still running on port
-  `5000`; the machine console at port `15000` is a separate service.
+- **Admin page cannot open:** verify Terminal 4 is running on the selected
+  Admin port (5000 by default); the machine console at port `15000` is a
+  separate service.
+- **Process simulator cannot connect:** start the PLC first and confirm its
+  listener is on `127.0.0.1:15020`. The simulator prints its connection and
+  telemetry database path once connected.
 - **Login rejected:** check the local account list with the command above.
   If needed, create a distinct user with
   `chem_shield_p1/.venv/bin/python -m admin_part.manage_users create USER --role administrator`;
@@ -215,7 +256,7 @@ Modbus port, or admin console to another network.
 
 ## How the virtual machine works
 
-The four terminals are separate processes, connected through the same
+The five services are separate processes, connected through the same
 interfaces a small lab control system would use:
 
 ```text
@@ -252,29 +293,29 @@ Part 1 operator HMI :15000 ---- Modbus TCP ---- Part 1 virtual PLC :15020
 - **Part 4 — event correlation and risk:** Validates and groups scored
   network/physical events by asset and time, computes the configured
   experimental risk score, and persists incident history alongside the HMI
-  database. Risk is reviewed in the Admin console. The HMI can display a
-  high/critical alert, but risk does not automatically stop or control the
-  process.
+  database. Risk is reviewed in the Admin console. Stale and historical
+  incidents remain available for history but do not trigger live warnings.
 - **Part 5 — OT physical monitor:** Validates telemetry and applies configured
   engineering/state rules, optionally scores readings with Part 3, and can
   explicitly publish scored events to the local Part 4 API. Its rule events
   are alerts, not PLC commands. CSV sample data is synthetic.
-- **Part 6 — operator-confirmed simulated response:** The HMI offers a
-  simulated stop only for an eligible active CRITICAL risk incident. The
-  operator must explicitly confirm it; no detector, rule, risk score, or admin
-  page automatically stops the machine. It is not a physical safety function.
+- **Part 6 — guarded simulated response:** A fresh critical incident or live
+  machine limit alert can arm an automatic stop timer, defaulting to 900
+  seconds. The HMI can stop the loopback simulator immediately on operator
+  confirmation; normal readings cancel the timer and resolve related active
+  incidents after 30 seconds. This is not a physical safety function.
 
 The HMI's machine-condition badge uses the configured upper limits (temperature
 70 °C, pressure 4 bar, power 12 kW, and speed 1500 RPM). Exceeding any one
-reports CRITICAL; otherwise it reports NORMAL. This is a status only and does
-not cause a stop. It is separate from the Part 4 detector-based incident-risk
-score.
+reports CRITICAL; otherwise the HMI reports **NO ACTIVE PROBLEM** when there
+is no fresh HIGH/CRITICAL incident. The machine condition is separate from the
+Part 4 detector-based incident-risk score.
 
 ## Run the optional detection demos
 
-The basic four-terminal machine runs without the detection pipeline. Start the
-four services first if you want detector events to appear in the admin live
-risk view.
+The core machine requires the PLC, process simulator, and HMI. The Admin
+console and Attack Console are optional; start them as described above if you
+want incident review or simulated sensor overrides.
 
 Reproduce the held-out Part 3 evaluation with:
 
@@ -404,13 +445,14 @@ Troubleshooting:
 
 ## Part 6: operator-confirmed simulated response
 
-Part 6 is available in the operator HMI's existing risk-alert popup. For an
-active CRITICAL incident, the operator may explicitly confirm a simulated
-stop there; HIGH and lower incidents cannot invoke it. No stop is automatic.
-Part 6 also supplies the HMI's small warning popup: it displays when configured
-machine sensor limits are exceeded or a new MEDIUM/HIGH/CRITICAL event or risk
-incident is reported. Warnings are informational only; opening or dismissing
-one never sends a machine command.
+Part 6 is available in the operator HMI's risk-alert dialog. A fresh CRITICAL
+incident or live sensor-limit violation can arm the automatic simulated stop,
+which defaults to 900 seconds. The timer is cancelled if readings return to
+normal; readings continuously inside limits for 30 seconds resolve related
+machine incidents. The operator can acknowledge a risk incident and explicitly
+confirm an immediate stop. HIGH-only incidents can raise a warning but do not
+arm the stop timer. Historical, replayed, medium-only, and old events do not
+raise pop-ups or toasts.
 The endpoint requires a page-generated confirmation token and rejects requests
 unless both the caller and configured PLC address are loopback. The response
 is recorded in the local event log. This is for the virtual PLC lab only; it
@@ -419,13 +461,16 @@ does not authorize production connections or safety-system use.
 ## Test the risk-event API
 
 Risk input is independent of PLC control and can be tested with sanitized,
-synthetic events. Start the HMI using the four-terminal instructions above
-before posting:
+synthetic events. Start the HMI using the five-terminal instructions above
+before posting, and export the same `CHEM_SHIELD_INGEST_TOKEN` in both the HMI
+and this terminal:
 
 ```bash
+timestamp="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 curl -X POST http://127.0.0.1:15000/api/risk/events \
   -H 'Content-Type: application/json' \
-  -d '{"events":[{"event_id":"demo-network-1","timestamp":"2026-10-14T09:30:00Z","source":"network_model","asset_id":"PLC-01","event_type":"network","anomaly_score":0.9,"evidence":{"fixture":"synthetic demonstration"}},{"event_id":"demo-physical-1","timestamp":"2026-10-14T09:30:04Z","source":"ot_monitor","asset_id":"PLC-01","event_type":"physical","anomaly_score":0.9,"evidence":{"fixture":"synthetic demonstration"}}]}'
+  -H "X-Ingest-Token: ${CHEM_SHIELD_INGEST_TOKEN}" \
+  -d "{\"events\":[{\"event_id\":\"demo-network-1\",\"timestamp\":\"${timestamp}\",\"source\":\"network_model\",\"asset_id\":\"PLC-01\",\"event_type\":\"network\",\"anomaly_score\":0.9,\"evidence\":{\"fixture\":\"synthetic demonstration\"}},{\"event_id\":\"demo-physical-1\",\"timestamp\":\"${timestamp}\",\"source\":\"ot_monitor\",\"asset_id\":\"PLC-01\",\"event_type\":\"physical\",\"anomaly_score\":0.9,\"evidence\":{\"fixture\":\"synthetic demonstration\"}}]}"
 ```
 
 The default Part 4 formula and thresholds are experimental project values, not

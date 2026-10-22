@@ -34,33 +34,39 @@ def test_generated_ingest_token_is_required_when_environment_is_unset(
     monkeypatch, tmp_path, caplog
 ):
     client = _hmi_client(monkeypatch, tmp_path)
-    app = client.application
-    token = app.config["INGEST_TOKEN"]
-    assert token
-    assert "generated a per-process ingest token" in caplog.text
-    assert token not in caplog.text
-    assert client.post("/api/risk/events", json=EVENT).status_code == 401
-    response = client.post(
-        "/api/risk/events",
-        json=EVENT,
-        headers={"X-Ingest-Token": token},
-    )
-    assert response.status_code == 200
+    try:
+        app = client.application
+        token = app.config["INGEST_TOKEN"]
+        assert token
+        assert "generated a per-process ingest token" in caplog.text
+        assert token not in caplog.text
+        assert client.post("/api/risk/events", json=EVENT).status_code == 401
+        response = client.post(
+            "/api/risk/events",
+            json=EVENT,
+            headers={"X-Ingest-Token": token},
+        )
+        assert response.status_code == 200
+    finally:
+        client.application.extensions["stop_background_tasks"]()
 
 
 def test_ingest_token_is_required_when_environment_is_set(monkeypatch, tmp_path):
     client = _hmi_client(monkeypatch, tmp_path, "local-ingest-secret")
-    missing = client.post("/api/risk/events", json=EVENT)
-    assert missing.status_code == 401
-    rejected = client.post(
-        "/api/risk/events",
-        json=EVENT,
-        headers={"X-Ingest-Token": "incorrect"},
-    )
-    assert rejected.status_code == 401
-    accepted = client.post(
-        "/api/risk/events",
-        json=EVENT,
-        headers={"X-Ingest-Token": "local-ingest-secret"},
-    )
-    assert accepted.status_code == 200
+    try:
+        missing = client.post("/api/risk/events", json=EVENT)
+        assert missing.status_code == 401
+        rejected = client.post(
+            "/api/risk/events",
+            json=EVENT,
+            headers={"X-Ingest-Token": "incorrect"},
+        )
+        assert rejected.status_code == 401
+        accepted = client.post(
+            "/api/risk/events",
+            json=EVENT,
+            headers={"X-Ingest-Token": "local-ingest-secret"},
+        )
+        assert accepted.status_code == 200
+    finally:
+        client.application.extensions["stop_background_tasks"]()
