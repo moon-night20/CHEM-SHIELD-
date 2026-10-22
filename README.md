@@ -3,7 +3,7 @@ Chem shield group project participant
 Name..............................ID 
 
 1. Hasenat Abdu...................CTC-723-26
-2. Wudase kenu....................CTC-1909-26
+2. Wudase kenu....................CTC-1906-26
 3. Biruktawit Sebsibe.............CTC-6596-26
 4. Firomsa Abdisa.................CTC-1602-26
    
