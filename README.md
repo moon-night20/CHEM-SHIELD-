@@ -2,7 +2,7 @@ Chem shield group project participant
 
       Name..............................ID.............main contribution
 
-1. Hasenat Abdu...................CTC-723-26....virtual PLC, Modbus register design, HMI integration and correlation engine internal admin with defense system.
+1. Hasenat Abdu...................CTC-723-26....virtual PLC, Modbus register design, HMI integration and correlation engine internal admin with all defense system.
 2. Wudase kenu....................CTC-1906-26...network fixture replay, anomaly scoring and admin dashboard with incidence.
 3. Biruktawit Sebsibe.............CTC-6596-26...physical-process model, AI.
 4. Firomsa Abdisa.................CTC-1602-26...AI , machine learning.
