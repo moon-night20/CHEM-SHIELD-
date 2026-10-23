@@ -1,11 +1,11 @@
 Chem shield group project participant 
 
-Name..............................ID 
+Name..............................ID.............main contribution
 
-1. Hasenat Abdu...................CTC-723-26
-2. Wudase kenu....................CTC-1906-26
-3. Biruktawit Sebsibe.............CTC-6596-26
-4. Firomsa Abdisa.................CTC-1602-26
+1. Hasenat Abdu...................CTC-723-26....virtual PLC, Modbus register design, HMI integration and correlation engine.
+2. Wudase kenu....................CTC-1906-26...network fixture replay, anomaly scoring and admin dashboard.
+3. Biruktawit Sebsibe.............CTC-6596-26...physical-process model, AI.
+4. Firomsa Abdisa.................CTC-1602-26...AI , machine learning.
    
 
 
@@ -14,10 +14,9 @@ Name..............................ID
 
 # CHEM-SHIELD
 
-CHEM-SHIELD is an academic, simulation-first OT monitoring and defensive
-cybersecurity project. Keep the virtual PLC bound to loopback for local demos.
-The project does not authorize production OT connections or automated
-mitigation.
+CHEM-SHIELD is a local simulation environment for studying operational technology (OT) monitoring and defensive cybersecurity. It combines a virtual PLC, process simulator, operator HMI, network-event replay, physical anomaly detection, event correlation, and an operator-confirmed simulated response.
+
+The system runs entirely on loopback (127.0.0.1) and does not connect to real industrial equipment.
 
 ## Project parts
 
@@ -29,12 +28,12 @@ mitigation.
 - Part 6: operator-confirmed simulated response
 - [Part 7: Command Center](./chem_shield_p7/README.md)
 - [Part 8: Local OT Defense Lab](./chem_shield_p8/README.md)
-
+              
 > **Part 3 held-out synthetic evaluation:** training on 6,000 P1-simulated
-> normal samples and testing on complete unseen attack scenarios detected
+> normal samples and testing on complete unseen attack scenarios detecteds.
+> The separate one-hour normal run produc(first detection: **0.5)
 > **87.5%** of `stealthy_in_range` samples (first detection: **0 s**) and
-> **7.5%** of `slow_gradual_drift` samples (first detection: **0.5 s**).
-> The separate one-hour normal run produced **339 false alarms/hour**
+> **7.5%** of `slow_gradual_drift` samples ed **339 false alarms/hour**
 > (4.71% false-positive rate). These simulator-only figures are not real-world
 > performance claims; see `chem_shield_p3/results/heldout_scenario_evaluation.csv`.
 
@@ -634,11 +633,10 @@ remain only in the operator HMI.
 P2 network scoring -> P3 physical ML -> P4 correlation/risk -> P5 OT validation -> Admin console
 ```
 
-| Role | Permissions |
-| --- | --- |
-| administrator | Incidents, decisions, users, settings, and audit log |
-| analyst | View incidents, acknowledge, escalate, mark false positive, add notes, and record a simulated response |
-| operator | Read-only view of incidents affecting the process and their status |
+ Role .. Permissions 
+ administrator .. Incidents, decisions, users, settings, and audit log .
+ analyst .. View incidents, acknowledge, escalate, mark false positive, add notes, and record a simulated response. 
+ operator .. Read-only view of incidents affecting the process and their status.
 
 Create users locally with the commands below. No default password is shipped;
 the password is prompted for and stored only as a Werkzeug hash in the ignored
