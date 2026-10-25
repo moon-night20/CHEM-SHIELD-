@@ -19,21 +19,88 @@
         <span class="mode-pill"><i></i> SIMULATION ONLY</span>
         <span id="connection-status" class="connection-pill">CONNECTING</span>
         <span id="clock" class="clock">--:--:--</span>
+        <a class="view-tab admin-home-link topbar-project-link" href="{{ admin_url }}">Admin Console ↗</a>
+        <details class="project-nav">
+          <summary class="view-tab project-menu-trigger topbar-project-link">Tools <span aria-hidden="true">▾</span></summary>
+          <div class="project-menu">
+            <a href="{{ attack_console_url }}" target="_blank" rel="noopener noreferrer">Attack Console <span aria-hidden="true">↗</span></a>
+          </div>
+        </details>
       </div>
     </header>
 
+    <nav class="view-nav" aria-label="Dashboard navigation">
+      <div class="section-tabs" role="tablist" aria-label="Dashboard sections">
+        <button id="nav-overview" class="view-tab active" type="button" role="tab" aria-controls="overview" aria-selected="true" data-view-target="overview">Dashboard</button>
+        <button id="nav-machine" class="view-tab" type="button" role="tab" aria-controls="machine-section" aria-selected="false" data-view-target="machine">Machine</button>
+        <button id="nav-network" class="view-tab" type="button" role="tab" aria-controls="network-section" aria-selected="false" data-view-target="network">Network &amp; OT</button>
+        <button id="nav-detection" class="view-tab" type="button" role="tab" aria-controls="detection-section" aria-selected="false" data-view-target="detection">AI / ML &amp; Alerts</button>
+        <button id="nav-response" class="view-tab" type="button" role="tab" aria-controls="response-section" aria-selected="false" data-view-target="response">Response</button>
+        <button id="nav-backend" class="view-tab" type="button" role="tab" aria-controls="backend-section" aria-selected="false" data-view-target="backend">Backend</button>
+      </div>
+    </nav>
+
     <main>
+      <section id="overview" class="screen-content" data-view-content="overview">
       <section class="hero-row">
         <div>
           <p class="eyebrow">VIRTUAL MACHINE / LOOPBACK LAB</p>
           <h1>OT Defense Dashboard</h1>
-          <p class="subtitle">Live machine health first. Detection and simulation tools below.</p>
+          <p class="subtitle">Live defense services, detector signals, and incident risk at a glance.</p>
         </div>
         <div class="top-actions">
           <span class="loopback-chip">127.0.0.1 ONLY</span>
         </div>
       </section>
+      <section class="kpi-grid" aria-label="Security and process summary">
+        <article class="kpi-card threat-card">
+          <div class="kpi-label">THREAT LEVEL</div>
+          <div class="threat-wrap">
+            <div id="threat-gauge" class="threat-gauge"><span id="threat-value">NORMAL</span></div>
+            <div><strong id="active-alert-count">00</strong><small>ACTIVE SIGNALS</small></div>
+          </div>
+        </article>
+        <article class="kpi-card">
+          <div class="kpi-label">LOCAL TWIN TEMPERATURE</div>
+          <div class="kpi-value"><span id="kpi-temperature">--.-</span><small>°C</small></div>
+          <div class="kpi-foot"><span id="temperature-state" class="state-dot"></span><span id="temperature-limit">Trip: -- °C</span></div>
+        </article>
+        <article class="kpi-card">
+          <div class="kpi-label">LOCAL TWIN PRESSURE</div>
+          <div class="kpi-value"><span id="kpi-pressure">--.-</span><small>bar</small></div>
+          <div class="kpi-foot"><span id="pressure-state" class="state-dot"></span><span id="pressure-limit">Trip: -- bar</span></div>
+        </article>
+        <article class="kpi-card">
+          <div class="kpi-label">LOCAL TWIN LEVEL</div>
+          <div class="kpi-value"><span id="kpi-level">--.-</span><small>%</small></div>
+          <div class="kpi-foot"><span id="feed-pump-state" class="state-dot"></span><span id="feed-state">Feed pump offline</span></div>
+        </article>
+        <article class="kpi-card compliance-kpi">
+          <div class="kpi-label">ZONE POSTURE</div>
+          <div class="compliance-inline"><div id="compliance-gauge" class="compliance-gauge"><span id="compliance-score">--</span></div>
+            <div><strong>SEGMENTATION</strong><small>Illustrative policy score</small></div></div>
+        </article>
+      </section>
+      <section class="panel backend-summary">
+        <div class="panel-heading"><div><p class="eyebrow">LIVE DEFENSE SERVICES</p><h2>Backend operations at a glance</h2></div>
+          <span id="backend-refresh-time" class="info-badge">WAITING FOR SAMPLE</span></div>
+        <div class="backend-status-grid">
+          <article class="backend-status-card"><span>NETWORK MONITOR</span><strong id="backend-network-value">0 EVENTS</strong><small id="backend-network-detail">Synthetic replay input</small></article>
+          <article class="backend-status-card"><span>OT / ZONE POLICY</span><strong id="backend-ot-value">READY</strong><small id="backend-ot-detail">Protocol inspection · Purdue flow checks</small></article>
+          <article class="backend-status-card"><span>AI / ML GUARD</span><strong id="backend-ml-value">READY</strong><small id="backend-ml-detail">Physics rules + Isolation Forest</small></article>
+          <article class="backend-status-card"><span>RISK CORRELATION</span><strong id="backend-risk-value">0 INCIDENTS</strong><small id="backend-risk-detail">Same asset · 10-second correlation window</small></article>
+          <article class="backend-status-card"><span>ALERT ENGINE</span><strong id="backend-alert-value">0 ALERTS</strong><small id="backend-alert-detail">Rule hits · evidence · severity</small></article>
+          <article class="backend-status-card"><span>SIS / AUDIT</span><strong id="backend-sis-value">INTACT</strong><small id="backend-sis-detail">Signed baseline · hash chain</small></article>
+        </div>
+        <div class="overview-actions">
+          <button class="primary-button" type="button" data-open-view="network">OPEN NETWORK LAB →</button>
+          <button class="secondary-button" type="button" data-open-view="detection">REVIEW ALERTS →</button>
+          <button class="secondary-button" type="button" data-open-view="backend">VIEW RISK ENGINE →</button>
+        </div>
+      </section>
+      </section>
 
+      <section id="machine-section" class="screen-content" data-view-content="machine" hidden>
       <section class="panel machine-bridge" aria-label="Live virtual machine status">
         <div class="panel-heading">
           <div><p class="eyebrow">LIVE VIRTUAL MACHINE</p><h2>Machine status &amp; data flow</h2></div>
@@ -68,34 +135,28 @@
         <span>Reactor twin values below are generated by this dashboard for detector demos; they are not machine readings.</span>
       </div>
 
-      <section class="kpi-grid" aria-label="Security and process summary">
-        <article class="kpi-card threat-card">
-          <div class="kpi-label">THREAT LEVEL</div>
-          <div class="threat-wrap">
-            <div id="threat-gauge" class="threat-gauge"><span id="threat-value">NORMAL</span></div>
-            <div><strong id="active-alert-count">00</strong><small>ACTIVE SIGNALS</small></div>
+      <section class="panel twin-controls" aria-labelledby="twin-controls-title">
+        <div class="panel-heading">
+          <div><p class="eyebrow">LOCAL BACKEND &amp; SIMULATED MACHINE</p><h2 id="twin-controls-title">Reactor twin controls</h2></div>
+          <span id="twin-engine-state" class="status-badge normal">TWIN ENGINE RUNNING</span>
+        </div>
+        <p class="panel-copy">These controls affect only this dashboard's local reactor simulation. The connected machine HMI above remains read-only.</p>
+        <div class="twin-control-grid">
+          <div class="twin-control-card">
+            <div><strong>Simulation engine</strong><small>Pause or resume process-model updates. Dashboard monitoring stays online.</small></div>
+            <button id="twin-engine-toggle" class="secondary-button" type="button" aria-pressed="true">Ⅱ PAUSE TWIN</button>
           </div>
-        </article>
-        <article class="kpi-card">
-          <div class="kpi-label">LOCAL TWIN TEMPERATURE</div>
-          <div class="kpi-value"><span id="kpi-temperature">--.-</span><small>°C</small></div>
-          <div class="kpi-foot"><span id="temperature-state" class="state-dot"></span><span id="temperature-limit">Trip: -- °C</span></div>
-        </article>
-        <article class="kpi-card">
-          <div class="kpi-label">LOCAL TWIN PRESSURE</div>
-          <div class="kpi-value"><span id="kpi-pressure">--.-</span><small>bar</small></div>
-          <div class="kpi-foot"><span id="pressure-state" class="state-dot"></span><span id="pressure-limit">Trip: -- bar</span></div>
-        </article>
-        <article class="kpi-card">
-          <div class="kpi-label">LOCAL TWIN LEVEL</div>
-          <div class="kpi-value"><span id="kpi-level">--.-</span><small>%</small></div>
-          <div class="kpi-foot"><span id="feed-pump-state" class="state-dot"></span><span id="feed-state">Feed pump offline</span></div>
-        </article>
-        <article class="kpi-card compliance-kpi">
-          <div class="kpi-label">ZONE POSTURE</div>
-          <div class="compliance-inline"><div id="compliance-gauge" class="compliance-gauge"><span id="compliance-score">--</span></div>
-            <div><strong>SEGMENTATION</strong><small>Illustrative policy score</small></div></div>
-        </article>
+          <div class="twin-control-card">
+            <div><strong>Feed pump</strong><small>Toggle the local twin pump command.</small></div>
+            <button id="twin-pump-toggle" class="primary-button" type="button" aria-pressed="true">STOP SIMULATED PUMP</button>
+          </div>
+          <div class="twin-control-card valve-control">
+            <label for="coolant-target"><strong>Coolant valve target</strong><small>Setpoint: <output id="coolant-target-value">40%</output> · actual position follows with model lag</small></label>
+            <input id="coolant-target" type="range" min="0" max="100" step="5" value="40">
+            <button id="coolant-apply" class="secondary-button" type="button">APPLY VALVE TARGET</button>
+          </div>
+        </div>
+        <p id="twin-control-message" class="twin-control-message" aria-live="polite">Controls are limited to the local simulation.</p>
       </section>
 
       <section class="main-grid">
@@ -167,20 +228,15 @@
           <ul id="physics-findings" class="finding-list"></ul>
         </article>
       </section>
+      </section>
 
+      <section id="network-section" class="screen-content" data-view-content="network" hidden>
       <section class="main-grid lower-grid">
         <article class="panel zones-panel">
           <div class="panel-heading"><div><p class="eyebrow">IEC 62443 ZONES &amp; CONDUITS</p><h2>Purdue network map</h2></div>
             <span class="info-badge">SYNTHETIC FLOWS</span></div>
           <div id="zone-map" class="zone-map"></div>
           <div class="zone-note">All displayed addressing is documentation-only simulation data. No network traffic is generated.</div>
-        </article>
-        <article class="panel response-panel">
-          <div class="panel-heading"><div><p class="eyebrow">HUMAN-IN-THE-LOOP</p><h2>Simulated response</h2></div><span class="approval-badge">APPROVAL REQUIRED</span></div>
-          <label class="operator-field" for="operator-name">Operator name<input id="operator-name" value="local-operator" maxlength="48"></label>
-          <div id="playbook-list" class="playbook-list"></div>
-          <div id="pending-responses" class="pending-list"><p class="empty-state">No response proposals pending.</p></div>
-          <p class="panel-footnote">Approval changes local demo state only. No PLC, firewall, zone, or external messaging action is taken.</p>
         </article>
       </section>
 
@@ -207,62 +263,19 @@
           </div>
         </article>
       </section>
-
-      <section class="panel backend-pipeline" aria-labelledby="backend-pipeline-title">
-        <div class="panel-heading">
-          <div>
-            <p class="eyebrow">EXISTING BACKEND WORKFLOW</p>
-            <h2 id="backend-pipeline-title">How P2–P5 process an incident</h2>
-          </div>
-          <span class="info-badge">OFFLINE FILE-BACKED CHAIN</span>
-        </div>
-        <p class="panel-copy">A short map of the existing sequential pipeline. Choose a stage to jump to its role; this guide does not start a run.</p>
-        <nav class="pipeline-shortcuts" aria-label="Backend pipeline stage shortcuts">
-          <a href="#pipeline-stage-p2">Network replay</a>
-          <a href="#pipeline-stage-p3">Physical model</a>
-          <a href="#pipeline-stage-p4">Risk correlation</a>
-          <a href="#pipeline-stage-p5">OT validation</a>
-        </nav>
-        <div class="pipeline-inputs">
-          <span><strong>Network input</strong> sanitized event fixture → P2</span>
-          <span><strong>Telemetry input</strong> local CSV → P3 and P5</span>
-        </div>
-        <div class="pipeline-flow" aria-label="P2 network replay flows to P3 physical model, P4 risk correlation, and P5 OT validation">
-          <article class="pipeline-stage" id="pipeline-stage-p2">
-            <span class="pipeline-stage-number">P2 · NETWORK</span>
-            <h3>Replay &amp; score</h3>
-            <p>Scores the supplied synthetic network events and selects anomalous assets and time window.</p>
-            <small>Output: scored network events + handoff</small>
-          </article>
-          <div class="pipeline-arrow"><span>asset / time handoff</span><strong aria-hidden="true">→</strong></div>
-          <article class="pipeline-stage" id="pipeline-stage-p3">
-            <span class="pipeline-stage-number">P3 · PHYSICAL</span>
-            <h3>Model scoring</h3>
-            <p>Uses that window to select telemetry and score it with the saved physical anomaly model.</p>
-            <small>Output: physical anomaly events</small>
-          </article>
-          <div class="pipeline-arrow"><span>P2 + P3 events</span><strong aria-hidden="true">→</strong></div>
-          <article class="pipeline-stage" id="pipeline-stage-p4">
-            <span class="pipeline-stage-number">P4 · CORRELATION</span>
-            <h3>Correlate &amp; rank</h3>
-            <p>Matches network and physical events by asset and time, then calculates incident risk.</p>
-            <small>Output: correlated incidents</small>
-          </article>
-          <div class="pipeline-arrow"><span>incident window</span><strong aria-hidden="true">→</strong></div>
-          <article class="pipeline-stage" id="pipeline-stage-p5">
-            <span class="pipeline-stage-number">P5 · OT VALIDATION</span>
-            <h3>Check &amp; report</h3>
-            <p>Validates incident-window telemetry with sensor checks and configured rules.</p>
-            <small>Output: validation report</small>
-          </article>
-        </div>
-        <div class="pipeline-footer">
-          <span>Run from the repository root:</span>
-          <code>chem_shield_p1/.venv/bin/python -m scripts.run_chain --step-by-step</code>
-          <span><code>--publish</code> optionally sends scored P2/P3 events to the loopback HMI; P5 writes a report.</span>
-        </div>
       </section>
 
+      <section id="response-section" class="screen-content" data-view-content="response" hidden>
+      <section class="panel response-panel">
+        <div class="panel-heading"><div><p class="eyebrow">HUMAN-IN-THE-LOOP</p><h2>Simulated response</h2></div><span class="approval-badge">APPROVAL REQUIRED</span></div>
+        <label class="operator-field" for="operator-name">Operator name<input id="operator-name" value="local-operator" maxlength="48"></label>
+        <div id="playbook-list" class="playbook-list"></div>
+        <div id="pending-responses" class="pending-list"><p class="empty-state">No response proposals pending.</p></div>
+        <p class="panel-footnote">Approval changes local demo state only. No PLC, firewall, zone, or external messaging action is taken.</p>
+      </section>
+      </section>
+
+      <section id="detection-section" class="screen-content" data-view-content="detection" hidden>
       <section class="panel alert-panel">
         <div class="panel-heading"><div><p class="eyebrow">DETECTION OUTPUT</p><h2>Alert and ATT&amp;CK timeline</h2></div>
           <div class="report-actions"><span id="alert-feed-count" class="info-badge">0 EVENTS</span>
@@ -270,6 +283,84 @@
             <span id="report-downloads" class="report-downloads" aria-live="polite"></span></div></div>
         <div class="table-wrap"><table><thead><tr><th>Time</th><th>Severity</th><th>Detection</th><th>Evidence</th><th>ATT&amp;CK for ICS</th></tr></thead>
           <tbody id="alert-table"><tr><td colspan="5" class="empty-state">No active scenario alerts.</td></tr></tbody></table></div>
+      </section>
+      <section class="panel detection-model-panel">
+        <div class="panel-heading"><div><p class="eyebrow">PROCESS AI / ML</p><h2>Physics rules and anomaly model</h2></div><span id="detection-model-state" class="info-badge">LOCAL TWIN</span></div>
+        <div class="detection-score-grid">
+          <div><span>PHYSICS SCORE</span><strong id="detection-physics-score">0.00</strong><div class="score-track"><i id="detection-physics-bar"></i></div></div>
+          <div><span>ISOLATION FOREST</span><strong id="detection-ml-score">0.00</strong><div class="score-track ml-track"><i id="detection-ml-bar"></i></div></div>
+        </div>
+        <p id="detection-model-explanation" class="explanation-card">Waiting for local reactor samples.</p>
+        <ul id="detection-findings" class="finding-list"></ul>
+      </section>
+      </section>
+
+      <section id="backend-section" class="screen-content" data-view-content="backend" hidden>
+      <section class="panel correlation-panel">
+        <div class="panel-heading"><div><p class="eyebrow">RISK CORRELATION AND SCORING</p><h2>Live in-memory incident analysis</h2></div><span id="correlation-count" class="info-badge">0 INCIDENTS</span></div>
+        <p class="panel-copy">Runs the project's correlation and risk components on validated synthetic detector outputs. Results are displayed locally and are not written to the incident database.</p>
+        <div class="risk-equation"><span>NETWORK 40%</span><strong>+</strong><span>PHYSICAL 60%</span><strong>×</strong><span>ASSET CRITICALITY</span></div>
+        <div class="table-wrap"><table><thead><tr><th>Incident</th><th>Asset</th><th>Signals</th><th>Network</th><th>Physical</th><th>Final risk</th><th>Level</th></tr></thead>
+          <tbody id="correlation-table"><tr><td colspan="7" class="empty-state">Start a synthetic scenario to analyze detector output.</td></tr></tbody></table></div>
+        <p id="correlation-note" class="panel-footnote">Independent asset identities are not merged. No scenario signal is sent to the physical machine.</p>
+      </section>
+
+      <section class="panel backend-pipeline" aria-labelledby="backend-pipeline-title">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">EXISTING BACKEND WORKFLOW</p>
+            <h2 id="backend-pipeline-title">How detection evidence becomes a validated incident</h2>
+          </div>
+          <span class="info-badge">SEPARATE OFFLINE ANALYSIS</span>
+        </div>
+        <p class="panel-copy">A short map of the existing sequential pipeline. Choose a stage to jump to its role; this guide does not start a run.</p>
+        <nav class="pipeline-shortcuts" aria-label="Backend pipeline stage shortcuts">
+          <a href="#pipeline-network-scoring">Network replay</a>
+          <a href="#pipeline-telemetry-analysis">Physical telemetry</a>
+          <a href="#pipeline-risk-correlation">Risk correlation</a>
+          <a href="#pipeline-rule-validation">OT validation</a>
+        </nav>
+        <div class="pipeline-inputs">
+          <span><strong>Network input</strong> sanitized event fixture → network scoring</span>
+          <span><strong>Telemetry input</strong> local CSV → telemetry analysis and rule validation</span>
+        </div>
+        <div class="pipeline-flow" aria-label="Network event scoring flows to physical telemetry analysis, incident correlation, and OT rule validation">
+          <article class="pipeline-stage" id="pipeline-network-scoring">
+            <span class="pipeline-stage-number">NETWORK ANALYSIS</span>
+            <h3>Replay &amp; score network events</h3>
+            <p>Scores the supplied synthetic network events and selects anomalous assets and time window.</p>
+            <small>Output: scored network events + handoff</small>
+          </article>
+          <div class="pipeline-arrow"><span>asset / time handoff</span><strong aria-hidden="true">→</strong></div>
+          <article class="pipeline-stage" id="pipeline-telemetry-analysis">
+            <span class="pipeline-stage-number">PHYSICAL TELEMETRY</span>
+            <h3>Score machine readings</h3>
+            <p>Uses that window to select telemetry and score it with the saved physical anomaly model.</p>
+            <small>Output: physical anomaly events</small>
+          </article>
+          <div class="pipeline-arrow"><span>network + physical evidence</span><strong aria-hidden="true">→</strong></div>
+          <article class="pipeline-stage" id="pipeline-risk-correlation">
+            <span class="pipeline-stage-number">INCIDENT CORRELATION</span>
+            <h3>Correlate &amp; rank risk</h3>
+            <p>Matches network and physical events by asset and time, then calculates incident risk.</p>
+            <small>Output: correlated incidents</small>
+          </article>
+          <div class="pipeline-arrow"><span>incident window</span><strong aria-hidden="true">→</strong></div>
+          <article class="pipeline-stage" id="pipeline-rule-validation">
+            <span class="pipeline-stage-number">OT RULE VALIDATION</span>
+            <h3>Validate &amp; report</h3>
+            <p>Validates incident-window telemetry with sensor checks and configured rules.</p>
+            <small>Output: validation report</small>
+          </article>
+        </div>
+        <div class="pipeline-footer">
+          <span>Run from the repository root:</span>
+          <code>chem_shield_p1/.venv/bin/python -m scripts.run_chain --step-by-step</code>
+          <span><code>--publish</code> optionally sends scored network and physical events to the loopback HMI; the final analysis step writes a validation report.</span>
+        </div>
+      </section>
+
+      </section>
       </section>
       <footer><span>CHEM-SHIELD · LOOPBACK SIMULATION</span><span id="footer-status">Machine feed is read-only; test scenarios are simulated.</span></footer>
     </main>

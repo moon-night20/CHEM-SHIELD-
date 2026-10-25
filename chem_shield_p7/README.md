@@ -10,7 +10,7 @@ control path.
 ```text
 Admin browser (login + CSRF, 127.0.0.1:5000)
         |
-        +--> /p7/command-center, /p7/timeline, /p7/integrity
+        +--> /p7/command-center, /p7/integrity
         |           |
         |           +--> Part 7 blueprint, scenario runner, report generator
         |                         |                  |
@@ -37,9 +37,9 @@ Admin console's Flask-WTF CSRF protection.
   scenario buttons, abort, countdown, mini-timeline, demo score, guided demo,
   and local mock-notifier outbox.
 - `http://127.0.0.1:5000/p7/scenarios` — scenario details.
-- `http://127.0.0.1:5000/p7/timeline` — live ordered run timeline and response
-  timing.
 - `http://127.0.0.1:5000/p7/integrity` — Admin audit-chain verification.
+- Scenario event history and report generation are available from the Command
+  Center; the internal timeline API supports its recent-activity panel.
 - `GET /p7/audit/verify` — authenticated integrity result.
 - `POST /p7/scenarios/<id>/run` and `POST /p7/scenarios/abort` — CSRF-protected
   scenario controls.
@@ -107,8 +107,8 @@ Sign in to the Admin console and open `/p7/command-center`. Run Overheat to
 observe the existing HMI warning and Part 6 countdown; leave it unacknowledged
 to observe the configured auto-stop. Run Cascade and acknowledge the incident
 in the HMI to observe recovery/override clearing. Use Abort to stop a scenario
-early; the runner clears all overrides. Generate the report from the timeline
-or incident detail page.
+early; the runner clears all overrides. Generate the report from the Command
+Center or incident detail page.
 
 The scenario runner uses `CHEM_SHIELD_INGEST_TOKEN`, which `scripts/chemshield.py
 run` shares with the HMI and local publishers. The default auto-stop remains

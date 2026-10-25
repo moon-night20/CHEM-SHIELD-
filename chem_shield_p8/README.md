@@ -1,16 +1,16 @@
-# CHEM-SHIELD Part 8 — Local OT Defense Lab
+# CHEM-SHIELD — Local OT Defense Dashboard
 
-Part 8 is a standalone, offline-capable, simulation-only OT defense lab. It
+The OT Defense Dashboard is a standalone, offline-capable, simulation-only lab. It
 combines a chemical reactor twin, in-memory PLC register map, synthetic OT
 event monitor, process-physics and ML anomaly scoring, SIS baseline checks,
 Purdue-zone policy, six defensive replay scenarios, approval-gated simulated
 response, and HTML/PDF incident reports.
 
-The dashboard reads the existing CHEM-SHIELD Part 1 HMI's
+The dashboard reads the existing machine HMI's
 `http://127.0.0.1:15000/api/state` and `/api/risk` endpoints and presents the
 live virtual machine status, readings, and data path first. This integration
-is read-only: Part 8 never writes to, sends commands to, scans, or controls
-Part 1–7 services or physical equipment. The reactor twin and scenario traffic
+is read-only: the dashboard never writes to, sends commands to, scans, or controls
+the connected machine services or physical equipment. The reactor twin and scenario traffic
 are separate local synthetic data, clearly labeled as simulation.
 
 ## Requirements
@@ -20,7 +20,7 @@ are separate local synthetic data, clearly labeled as simulation.
 - No external service or CDN is required at runtime. Install dependencies
   before going offline.
 
-From the repository root, create an environment and install the Part 8
+From the repository root, create an environment and install the dashboard
 dependencies:
 
 ```sh
@@ -44,39 +44,64 @@ Open <http://127.0.0.1:15080>. The service binds only to loopback. If port
 CHEM_SHIELD_P8_PORT=15081 python -m chem_shield_p8.run
 ```
 
-Part 8 can run independently if the existing HMI is not running. To display
-the HMI integration panel, start the Part 1 HMI separately before opening
-Part 8. The P8 panel will report the feed as unavailable when Part 1 is
+The dashboard can run independently if the machine HMI is not running. To show
+live machine readings, start the machine services before opening the dashboard.
+The panel reports the feed as unavailable when the machine HMI is
 stopped; the reactor twin, detectors, scenarios, responses, and reports
 continue to work locally.
 
+The Admin Console is the main project navigation hub for Dashboard, Machine,
+Incidents, Scenario Command Center, and administrator-only Users and Audit
+pages. It links to this read-only OT Defense Dashboard. The dashboard keeps its own
+Dashboard, Machine, Network & OT, AI / ML & Alerts, Response, and Backend views,
+and provides a single **Admin Console** link back to the hub; it does not repeat
+Admin's page navigation. The Attack Console has its own link and the Machine HMI
+is available in the Machine view. Defaults are
+`http://127.0.0.1:5000` and `http://127.0.0.1:5001`; override them with
+`CHEM_SHIELD_P8_ADMIN_URL` and `CHEM_SHIELD_P8_ATTACK_CONSOLE_URL` when those
+services use different loopback ports. For safety, P8 accepts only bare HTTP
+URLs on `127.0.0.1` with an explicit valid port.
+
 ## Use the dashboard
 
-1. Check the **Live Virtual Machine** panel for machine connectivity, motor
-   status, current readings, and the simulator → PLC → HMI → dashboard path.
-   The panel is read-only; use the existing machine HMI for operator controls.
-2. Review the separately labeled local reactor twin, physics/ML scores, zones,
-   and discovered synthetic assets.
-3. Choose one of the six scenarios and use **PLAY**, **PAUSE**, or **STEP**.
-   The timeline slider scrubs the generated events.
-4. After the scenario section, use the **P2–P5 backend workflow** shortcuts
-   to review how network replay, physical model scoring, risk correlation,
-   and OT validation connect. This is an architecture guide; it does not
-   start the file-backed chain.
-5. Propose a response playbook and explicitly approve or reject it. Approval
-   only updates Part 8's in-memory demo state and local audit log.
-6. Select **GENERATE INCIDENT REPORT** to create HTML and PDF snapshots. Files
+The dashboard is organized into viewport-sized tabs to keep the overview
+compact. On smaller displays, individual views can scroll without growing the
+whole dashboard page. The overview reports live results from its defense
+services; the separate offline analysis workflow is not started by the dashboard.
+
+1. Use **Dashboard** for current network, OT-policy, AI/ML, correlation,
+   risk, alert, and SIS-integrity summaries.
+2. Open **Machine** for machine HMI readings and the local reactor twin. The HMI
+   data is read-only; use the existing machine HMI for its controls.
+3. Use **Reactor twin controls** to pause/resume the local reactor model, toggle
+   its simulated feed pump, or set the simulated coolant-valve target. These
+   controls affect only the local twin; monitoring stays online and the
+   connected machine remains read-only.
+4. In **Network & OT**, choose one of six synthetic scenarios and use **PLAY**,
+   **PAUSE**, or **STEP**. Review protocol events, Purdue-zone decisions, and
+   discovered assets. The timeline slider scrubs generated events.
+5. Use **AI / ML & Alerts** for the physics and Isolation Forest scores,
+   findings, ATT&amp;CK annotations, and alert evidence.
+6. Use **Backend** to inspect the live in-memory correlation and risk results
+   alongside the offline analysis workflow. The risk engine correlates validated
+   synthetic alerts by asset and time; it does not write to the incident database.
+   The workflow guide does not start the separate file-backed analysis chain.
+7. In **Response**, propose a response playbook and explicitly approve or
+   reject it. Approval
+   only updates the dashboard's in-memory demo state and local audit log.
+8. Select **GENERATE INCIDENT REPORT** in **AI / ML & Alerts** to create HTML
+   and PDF snapshots. Files
    are saved under `chem_shield_p8/data/reports/` and can be downloaded from
    the dashboard.
 
-To run the existing P2–P5 offline pipeline from the repository root:
+To run the separate offline analysis workflow from the repository root:
 
 ```sh
 chem_shield_p1/.venv/bin/python -m scripts.run_chain --step-by-step
 ```
 
-Use `--publish` only when you intentionally want the scored P2/P3 events sent
-to the existing loopback HMI. The sequential P5 step produces a validation
+Use `--publish` only when you intentionally want the scored network and
+physical events sent to the existing loopback HMI. The final analysis step produces a validation
 report; the dashboard's pipeline panel does not execute this command.
 
 ## Test
@@ -93,7 +118,7 @@ for each synthetic scenario.
 
 ## Safety and interpretation
 
-- All Part 8 services bind to `127.0.0.1`; the dashboard also rejects
+- All dashboard services bind to `127.0.0.1`; the dashboard also rejects
   non-loopback clients.
 - Synthetic scenarios are detector tests, not attack tools. The OT monitor
   processes supplied event records; no network discovery or protocol traffic

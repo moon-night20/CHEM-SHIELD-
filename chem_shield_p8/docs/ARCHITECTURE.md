@@ -2,6 +2,8 @@
 
 Part 8 is a standalone local application. The Flask dashboard coordinates
 separate Python modules and serves a same-origin HTML/CSS/JavaScript client.
+Its compact, navigable views keep the live overview separate from machine,
+network/OT, detection, response, and backend detail panels.
 The process twin and protocol scenarios are independent synthetic sources;
 the existing Part 1 virtual machine is displayed from its HMI's read-only API.
 The integrated machine and the local reactor twin are separate data sources.
@@ -29,8 +31,11 @@ flowchart LR
 
 ## Data flow
 
-1. `plant_twin` advances a deterministic reactor model using local controls
-   and publishes scaled values to an in-memory PLC-style map.
+1. `plant_twin` advances a deterministic reactor model using bounded local
+   controls and publishes scaled values to an in-memory PLC-style map. The
+   dashboard can pause/resume this model and adjust its simulated feed pump
+   and coolant-valve target; the monitoring service remains online while the
+   twin is paused.
 2. `physics_guard` compares telemetry against rate, energy, mass, and
    cross-sensor rules and reports a separate locally trained Isolation Forest
    deviation score.
@@ -41,9 +46,13 @@ flowchart LR
    virtual PLC → HMI → read-only dashboard path visible. Findings are
    correlated into a snapshot and SSE stream; scenario evidence, asset
    inventory, compliance checks, and response decisions remain local.
-5. Operators can propose a response. The `response` module records a pending
+5. P8 summarizes network, OT-zone, AI/ML, alert, and SIS outputs from those
+   local modules. It passes validated synthetic network and physical detector
+   alerts to the existing P4 correlation and risk engine in memory; it does
+   not write to the P4 incident store or combine distinct asset identities.
+6. Operators can propose a response. The `response` module records a pending
    decision; only an explicit approve action applies its simulated effect.
-6. `reports` turns a point-in-time dashboard snapshot into self-contained HTML
+7. `reports` turns a point-in-time dashboard snapshot into self-contained HTML
    and PDF files for local download.
 
 ## Existing P2–P5 offline pipeline
@@ -51,6 +60,8 @@ flowchart LR
 The dashboard includes a read-only guide to the repository's separate
 file-backed runner, `scripts.run_chain`. This is not the Part 8 scenario
 runtime and is not started by opening the dashboard.
+P8's in-memory P4 analysis is a separate display path and does not start the
+P2–P5 runner.
 
 ```mermaid
 flowchart LR
@@ -80,8 +91,8 @@ the loopback HMI; P5 writes its report locally.
 - The Flask server is hard-bound to `127.0.0.1`; requests from non-loopback
   addresses are rejected. Mutating browser routes require CSRF validation.
 - Existing CHEM-SHIELD integration is restricted to the validated Part 1 HMI
-  loopback origin and GET requests. Machine controls remain on the existing
-  HMI; no Part 8 action is forwarded to it.
+  loopback origin and GET requests. CSRF-protected P8 controls mutate only the
+  local reactor twin; no Part 8 action is forwarded to the Part 1 HMI.
 - Synthetic scenario IP addresses use documentation-only ranges. No packets,
   scans, firewall changes, or device commands are generated.
 - Response, SIS, and report files are written under the Part 8 data directory.

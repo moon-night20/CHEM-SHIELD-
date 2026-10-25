@@ -30,6 +30,8 @@ from flask import (
 )
 from flask_wtf.csrf import CSRFProtect
 
+from chem_shield_p4.correlation.correlation_engine import CorrelationEngine
+from chem_shield_p4.risk_engine.risk_engine import RiskEngine
 from chem_shield_p8.attack_lab import ReplayRunner, ReplaySession
 from chem_shield_p8.attack_lab.replay import BASE_SIS_STATE
 from chem_shield_p8.physics_guard import PhysicsGuard, PhysicalAnomalyModel
@@ -44,6 +46,8 @@ LOGGER = logging.getLogger(__name__)
 P8_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATA_DIR = P8_ROOT / "data"
 DEFAULT_HMI_URL = "http://127.0.0.1:15000"
+DEFAULT_ADMIN_URL = "http://127.0.0.1:5000"
+DEFAULT_ATTACK_CONSOLE_URL = "http://127.0.0.1:5001"
 SEVERITY_RANK = {"INFO": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
 
 
@@ -63,6 +67,28 @@ def _safe_hmi_url(value: str | None) -> str:
     ):
         raise ValueError("P8 can connect only to the existing HMI at http://127.0.0.1:15000.")
     return "http://127.0.0.1:15000"
+
+
+def _safe_local_page_url(value: str | None, *, name: str, default: str) -> str:
+    """Allow navigation only to a bare HTTP page on the local loopback host."""
+    candidate = value or default
+    parsed = urlsplit(candidate)
+    try:
+        valid_port = parsed.port is not None and 1 <= parsed.port <= 65535
+    except ValueError:
+        valid_port = False
+    if (
+        parsed.scheme != "http"
+        or parsed.hostname != "127.0.0.1"
+        or not valid_port
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+        or parsed.path not in {"", "/"}
+    ):
+        raise ValueError(f"P8 {name} link must be a local HTTP page on 127.0.0.1.")
+    return f"http://127.0.0.1:{parsed.port}/"
 
 
 class HMIReadOnlyClient:
@@ -139,6 +165,7 @@ class DashboardRuntime:
         self._last_physics = self.guard.analyze(self.twin.state, 1.0)
         self._session: ReplaySession | None = None
         self._playing = False
+        self._simulation_running = True
         self._latest_alerts: list[dict[str, Any]] = []
         self._timeline: list[dict[str, Any]] = []
         self._last_hmi: dict[str, Any] = {
@@ -168,19 +195,20 @@ class DashboardRuntime:
         )
 
     def advance(self, dt_seconds: float = 1.0) -> dict[str, Any]:
-        """Advance only the local twin and one step of the active synthetic replay."""
+        """Advance the enabled local twin and one step of synthetic replay."""
         with self._lock:
             controls_data = self.response_manager.state.controls
             if controls_data != self._controls:
                 self._controls = dict(controls_data)
-            controls = Controls(
-                coolant_valve_pct=float(self._controls["coolant_valve_pct"]),
-                feed_pump_on=bool(self._controls["feed_pump_on"]),
-                relief_valve_open=self._controls["relief_valve_open"],
-            )
-            state = self.twin.step(dt_seconds, controls)
-            self.plc.publish_state(state)
-            self._last_physics = self.guard.analyze(state, dt_seconds)
+            if self._simulation_running:
+                controls = Controls(
+                    coolant_valve_pct=float(self._controls["coolant_valve_pct"]),
+                    feed_pump_on=bool(self._controls["feed_pump_on"]),
+                    relief_valve_open=self._controls["relief_valve_open"],
+                )
+                state = self.twin.step(dt_seconds, controls)
+                self.plc.publish_state(state)
+                self._last_physics = self.guard.analyze(state, dt_seconds)
             self._advance_replay()
             if self.hmi is not None:
                 self._last_hmi = self.hmi.snapshot()
@@ -201,6 +229,7 @@ class DashboardRuntime:
                 for alert in self._latest_alerts
             ]
             threat = max(severities, key=lambda item: SEVERITY_RANK.get(item, 0)) if severities else "NORMAL"
+            backend = self._backend_analysis()
             return {
                 "timestamp": (self._last_step_at or datetime.now(timezone.utc)).isoformat(),
                 "plant": state,
@@ -253,12 +282,179 @@ class DashboardRuntime:
                     },
                     "log_integrity": self.response_manager.verify_log(),
                 },
+                "simulation": {
+                    "running": self._simulation_running,
+                    "controls": dict(self.response_manager.state.controls),
+                },
+                "backend": backend,
                 "sis": {
                     "chain_integrity": self.sis_watch.chain.verify(),
                     "latest": self._last_sis.as_dict(),
                 },
                 "existing_chem_shield": self._last_hmi,
             }
+
+    def _backend_analysis(self) -> dict[str, Any]:
+        """Summarize real P8 stage outputs and run P4 correlation/risk in memory."""
+        result = self._session.result() if self._session is not None else None
+        alerts = result.alerts if result is not None else []
+        timeline = result.timeline if result is not None else []
+        network_events = self._session.events() if self._session is not None else []
+        zone_decisions = [
+            entry.detail.get("zone_decision")
+            for entry in timeline
+            if entry.event_type == "SYNTHETIC_OT_EVENT"
+        ]
+        protocols = sorted({event.protocol for event in network_events})
+        network_alerts = []
+        physical_alerts = []
+        network_rules = {
+            "UNKNOWN_ASSET",
+            "ILLEGAL_FUNCTION_CODE",
+            "UNAUTHORIZED_WRITE",
+            "SETPOINT_OUT_OF_RANGE",
+            "DUPLICATE_PACKET_REPLAY",
+            "UNKNOWN_ZONE_FLOW",
+            "DIRECT_IT_TO_CONTROL",
+            "MISSING_CONDUIT",
+            "PROTOCOL_NOT_ALLOWED",
+            "ENDPOINT_NOT_ALLOWED",
+        }
+        severity_scores = {"INFO": 0.1, "LOW": 0.25, "MEDIUM": 0.5, "HIGH": 0.75, "CRITICAL": 1.0}
+        for index, alert in enumerate(alerts):
+            matching_event = next(
+                (event for event in network_events if event.timestamp == alert.timestamp),
+                None,
+            )
+            asset_id = matching_event.device_id if matching_event is not None else (
+                "SIS-01" if alert.rule_id == "SIS_BASELINE_CHANGE" else "P8-REACTOR-TWIN"
+            )
+            event = {
+                "timestamp": alert.timestamp.isoformat(),
+                "asset_id": asset_id,
+                "event_type": "network" if alert.rule_id in network_rules else "physical",
+                "anomaly_score": severity_scores.get(alert.severity, 0.0),
+                "event_id": f"p8-{self._session.scenario['id']}-{index}" if self._session else f"p8-alert-{index}",
+                "source": "P8 OT monitor" if alert.rule_id in network_rules else "P8 safety/process monitor",
+                "severity": alert.severity,
+                "evidence": {"rule_id": alert.rule_id, **alert.evidence},
+            }
+            (network_alerts if event["event_type"] == "network" else physical_alerts).append(event)
+
+        physics = self._last_physics.as_dict()
+        if physics["findings"] or physics["ml_score"] >= 0.5:
+            physical_alerts.append({
+                "timestamp": (self._last_step_at or datetime.now(timezone.utc)).isoformat(),
+                "asset_id": "P8-REACTOR-TWIN",
+                "event_type": "physical",
+                "anomaly_score": max(physics["physics_score"], physics["ml_score"]),
+                "event_id": "p8-reactor-twin-current-sample",
+                "source": "P8 physics guard / ML",
+                "severity": "HIGH" if physics["physics_score"] >= 0.5 else "MEDIUM",
+                "evidence": {
+                    "physics_score": physics["physics_score"],
+                    "ml_score": physics["ml_score"],
+                    "findings": physics["findings"],
+                },
+            })
+
+        correlated, validation_errors = CorrelationEngine().correlate(
+            network_alerts + physical_alerts
+        )
+        risk_engine = RiskEngine()
+        incidents = []
+        for incident in correlated:
+            details = incident.to_dict()
+            risk = risk_engine.calculate_risk(details).to_dict()
+            incidents.append({
+                **details,
+                "risk": risk,
+                "events": [
+                    {
+                        "event_type": event.event_type,
+                        "source": event.source,
+                        "severity": event.severity,
+                        "anomaly_score": event.anomaly_score,
+                        "timestamp": event.timestamp.isoformat(),
+                    }
+                    for event in incident.events
+                ],
+            })
+        return {
+            "network": {
+                "event_count": len(network_events),
+                "protocols": protocols,
+                "write_count": sum(event.operation == "write" for event in network_events),
+                "alert_count": len(network_alerts),
+            },
+            "ot": {
+                "event_count": len(network_events),
+                "asset_count": len(self._session.assets()) if self._session is not None else 0,
+                "allowed_flows": sum(decision in {"SAME_ZONE_PROTOCOL", "CONDUIT_ALLOWED"} for decision in zone_decisions),
+                "blocked_flows": sum(decision not in {None, "SAME_ZONE_PROTOCOL", "CONDUIT_ALLOWED"} for decision in zone_decisions),
+            },
+            "ai_ml": {
+                "physics_score": physics["physics_score"],
+                "ml_score": physics["ml_score"],
+                "finding_count": len(physics["findings"]),
+                "model_enabled": self.guard.ml_enabled,
+            },
+            "correlation": {
+                "window_seconds": CorrelationEngine().time_window_seconds,
+                "incident_count": len(incidents),
+                "dual_signal_count": sum(
+                    incident["network_present"] and incident["physical_present"]
+                    for incident in incidents
+                ),
+                "validation_error_count": len(validation_errors),
+                "incidents": incidents,
+            },
+            "alerts": {
+                "count": len(alerts),
+                "critical_count": sum(alert.severity == "CRITICAL" for alert in alerts),
+                "high_count": sum(alert.severity == "HIGH" for alert in alerts),
+                "rules": sorted({alert.rule_id for alert in alerts}),
+            },
+            "sis": {
+                "integrity_ok": self.sis_watch.chain.verify()["ok"],
+                "status": self._last_sis.status,
+            },
+        }
+
+    def set_simulation_running(self, running: bool) -> dict[str, Any]:
+        """Pause or resume only the local reactor-twin process model."""
+        if not isinstance(running, bool):
+            raise ValueError("running must be a boolean.")
+        with self._lock:
+            self._simulation_running = running
+            return self.snapshot()
+
+    def set_twin_controls(
+        self,
+        *,
+        coolant_valve_pct: float | None = None,
+        feed_pump_on: bool | None = None,
+    ) -> dict[str, Any]:
+        """Set bounded actuators for the local twin without contacting the HMI."""
+        if coolant_valve_pct is None and feed_pump_on is None:
+            raise ValueError("At least one local twin control is required.")
+        if coolant_valve_pct is not None and (
+            isinstance(coolant_valve_pct, bool)
+            or not isinstance(coolant_valve_pct, (int, float))
+            or not 0.0 <= coolant_valve_pct <= 100.0
+        ):
+            raise ValueError("coolant_valve_pct must be a finite number between 0 and 100.")
+        if feed_pump_on is not None and not isinstance(feed_pump_on, bool):
+            raise ValueError("feed_pump_on must be a boolean.")
+        with self._lock:
+            controls = dict(self.response_manager.state.controls)
+            if coolant_valve_pct is not None:
+                controls["coolant_valve_pct"] = float(coolant_valve_pct)
+            if feed_pump_on is not None:
+                controls["feed_pump_on"] = feed_pump_on
+            self.response_manager.state.controls = controls
+            self._controls = dict(controls)
+            return self.snapshot()
 
     def start_scenario(self, scenario_id: str) -> dict[str, Any]:
         with self._lock:
@@ -317,6 +513,11 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         P8_DATA_DIR=DEFAULT_DATA_DIR,
         P8_HMI_URL=os.environ.get("CHEM_SHIELD_P8_HMI_URL", DEFAULT_HMI_URL),
         P8_READ_EXISTING_HMI=True,
+        P8_ADMIN_URL=os.environ.get("CHEM_SHIELD_P8_ADMIN_URL", DEFAULT_ADMIN_URL),
+        P8_ATTACK_CONSOLE_URL=os.environ.get(
+            "CHEM_SHIELD_P8_ATTACK_CONSOLE_URL",
+            DEFAULT_ATTACK_CONSOLE_URL,
+        ),
     )
     if test_config:
         app.config.update(test_config)
@@ -324,6 +525,18 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         app.config["P8_HMI_URL"] = _safe_hmi_url(app.config["P8_HMI_URL"])
     except ValueError as error:
         raise ValueError(f"Unsafe P8 HMI integration setting: {error}") from error
+    for setting, name, default in (
+        ("P8_ADMIN_URL", "admin-console", DEFAULT_ADMIN_URL),
+        ("P8_ATTACK_CONSOLE_URL", "attack-console", DEFAULT_ATTACK_CONSOLE_URL),
+    ):
+        try:
+            app.config[setting] = _safe_local_page_url(
+                app.config[setting],
+                name=name,
+                default=default,
+            )
+        except ValueError as error:
+            raise ValueError(f"Unsafe P8 {name} link setting: {error}") from error
     csrf = CSRFProtect()
     csrf.init_app(app)
     runtime = app.config.get("P8_RUNTIME")
@@ -359,7 +572,11 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
 
     @app.get("/")
     def dashboard():
-        return render_template("index.html")
+        return render_template(
+            "index.html",
+            admin_url=f"{app.config['P8_ADMIN_URL']}dashboard",
+            attack_console_url=app.config["P8_ATTACK_CONSOLE_URL"],
+        )
 
     @app.get("/api/snapshot")
     def snapshot_api():
@@ -379,6 +596,30 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             mimetype="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
+
+    @app.post("/api/twin/playback")
+    def twin_playback():
+        payload = request.get_json()
+        if not isinstance(payload, dict) or set(payload) != {"running"}:
+            return jsonify({"error": "A boolean running value is required."}), 400
+        if not isinstance(payload["running"], bool):
+            return jsonify({"error": "running must be a boolean."}), 400
+        return jsonify(runtime.set_simulation_running(payload["running"]))
+
+    @app.post("/api/twin/controls")
+    def twin_controls():
+        payload = request.get_json()
+        allowed = {"coolant_valve_pct", "feed_pump_on"}
+        if (
+            not isinstance(payload, dict)
+            or not payload
+            or set(payload) - allowed
+        ):
+            return jsonify({"error": "Provide coolant_valve_pct and/or feed_pump_on only."}), 400
+        try:
+            return jsonify(runtime.set_twin_controls(**payload))
+        except (TypeError, ValueError) as error:
+            return jsonify({"error": str(error)}), 400
 
     @app.post("/api/scenarios/start")
     def start_scenario():

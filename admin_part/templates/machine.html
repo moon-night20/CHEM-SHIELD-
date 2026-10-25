@@ -9,6 +9,12 @@
     <span class="safety-label">Read-only · machine controls are not available here</span>
   </section>
   <p class="hmi-address">Machine HMI: <a href="{{ hmi_url }}" rel="noopener noreferrer">{{ hmi_url }}</a></p>
+  <section class="critical-machine-notice checking" data-critical-machine-issue data-reload-on-critical aria-live="assertive" role="status">
+    <strong data-critical-machine-title>CHECKING CRITICAL STATUS</strong>
+    <p data-critical-machine-detail>Reading current machine and detector status.</p>
+    <a href="{{ url_for('incidents_page') }}">Review incident register</a>
+    <button type="button" data-enable-machine-alerts hidden>Enable desktop alerts</button>
+  </section>
   {% include "_live_panel.html" %}
   <p class="empty-state">The supervisor console only reads machine status and telemetry. Operate the virtual machine from the separate HMI page.</p>
 {% endblock %}

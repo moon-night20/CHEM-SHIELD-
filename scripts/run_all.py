@@ -25,13 +25,15 @@ PLC_PORT = 15020
 HMI_PORT = 15000
 OT_CONSOLE_PORT = 5001
 ADMIN_PORT = 5000
-SERVICE_PORTS = (PLC_PORT, HMI_PORT, ADMIN_PORT, OT_CONSOLE_PORT)
+DEFENSE_PORT = 15080
+SERVICE_PORTS = (PLC_PORT, HMI_PORT, ADMIN_PORT, OT_CONSOLE_PORT, DEFENSE_PORT)
 SERVICE_COMMANDS = (
     "chem_shield_p1.plc.modbus_plc",
     "chem_shield_p1.process.main",
     "chem_shield_p1.hmi.app",
     "admin_part.app",
     "the_attack.app",
+    "chem_shield_p8.run",
 )
 PLC_READY_TIMEOUT = 30.0
 SHUTDOWN_TIMEOUT = 5.0
@@ -400,6 +402,14 @@ def build_commands(
                 database,
             ],
         ),
+        (
+            "Defense Dashboard",
+            [
+                python_executable,
+                "-m",
+                "chem_shield_p8.run",
+            ],
+        ),
     ]
 
 
@@ -409,13 +419,15 @@ def wait_for_port(
     process: subprocess.Popen,
     timeout: float = PLC_READY_TIMEOUT,
 ) -> None:
-    """Wait until the loopback PLC port accepts a connection."""
+    """Wait until a managed loopback service accepts a connection."""
 
     deadline = time.monotonic() + timeout
     last_error: OSError | None = None
     while time.monotonic() < deadline:
         if process.poll() is not None:
-            raise RuntimeError("PLC process exited before its port became ready")
+            raise RuntimeError(
+                f"Service process exited before {host}:{port} became ready"
+            )
         try:
             with socket.create_connection((host, port), timeout=0.5):
                 return
@@ -423,7 +435,7 @@ def wait_for_port(
             last_error = error
             time.sleep(0.2)
     raise TimeoutError(
-        f"PLC did not become ready at {host}:{port} within {timeout:g}s: {last_error}"
+        f"Service did not become ready at {host}:{port} within {timeout:g}s: {last_error}"
     )
 
 
@@ -460,11 +472,17 @@ def start_services(
         else child_environment.get("CHEM_SHIELD_ADMIN_PORT", ADMIN_PORT)
     )
     child_environment["CHEM_SHIELD_ADMIN_PORT"] = str(selected_admin_port)
+    child_environment["CHEM_SHIELD_P8_PORT"] = str(DEFENSE_PORT)
+    child_environment["CHEM_SHIELD_P8_ADMIN_URL"] = (
+        f"http://{safe_host}:{selected_admin_port}"
+    )
     children: list[ChildProcess] = []
     log_lock = threading.Lock()
     try:
-        for index, (name, command) in enumerate(
-            build_commands(python_executable, safe_host, selected_admin_port)
+        for name, command in build_commands(
+            python_executable,
+            safe_host,
+            selected_admin_port,
         ):
             process = process_factory(
                 command,
@@ -488,8 +506,10 @@ def start_services(
             child = ChildProcess(name, process, log_thread)
             children.append(child)
             log_thread.start()
-            if index == 0:
+            if name == "PLC":
                 readiness_probe(safe_host, PLC_PORT, process, PLC_READY_TIMEOUT)
+            elif name == "Defense Dashboard":
+                readiness_probe(safe_host, DEFENSE_PORT, process, PLC_READY_TIMEOUT)
     except BaseException:
         stop_services(children)
         raise
@@ -573,7 +593,8 @@ def main(argv: list[str] | None = None) -> int:
         print(
             f"All services started on loopback. HMI: http://{LOOPBACK_HOST}:{HMI_PORT} "
             f"Admin: http://{LOOPBACK_HOST}:{admin_port} OT Console: "
-            f"http://{LOOPBACK_HOST}:{OT_CONSOLE_PORT}. Press Ctrl+C to stop.",
+            f"http://{LOOPBACK_HOST}:{OT_CONSOLE_PORT} Defense Dashboard: "
+            f"http://{LOOPBACK_HOST}:{DEFENSE_PORT}. Press Ctrl+C to stop.",
             flush=True,
         )
         while True:

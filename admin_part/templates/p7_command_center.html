@@ -4,10 +4,9 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='p7.css') }}">
 <main class="p7-shell">
   <header class="p7-heading">
-    <div><p class="p7-eyebrow">PART 7 / JUDGE MODE</p><h1>Command Center</h1>
+    <div><p class="p7-eyebrow">SUPERVISED SCENARIO OPERATIONS</p><h1>Scenario Command Center</h1>
       <p>Loopback simulation only. Scenario controls change simulated sensor values.</p></div>
-    <div class="p7-actions"><a class="p7-button secondary" href="{{ url_for('p7.timeline_page') }}">Live timeline</a>
-      <a class="p7-button secondary" href="{{ url_for('p7.integrity_page') }}">Audit integrity</a></div>
+    <div class="p7-actions"><a class="p7-button secondary" href="{{ url_for('p7.integrity_page') }}">Audit integrity</a></div>
   </header>
   <section class="p7-status-grid" aria-label="Live machine status">
     <article class="p7-status-card"><span>LIVE MACHINE</span><strong id="p7-condition" class="p7-condition">CONNECTING</strong>
@@ -30,8 +29,7 @@
     </article>
   </section>
   <section class="p7-panel">
-    <div class="p7-section-heading"><div><h2>Live mini-timeline</h2><p id="p7-run-name">No scenario run recorded yet.</p></div>
-      <a href="{{ url_for('p7.timeline_page') }}">Open full timeline</a></div>
+    <div class="p7-section-heading"><div><h2>Recent scenario activity</h2><p id="p7-run-name">No scenario run recorded yet.</p></div></div>
     <ol id="p7-mini-timeline" class="p7-timeline"></ol>
     <form id="p7-report-form" method="post" action="{{ url_for('p7.create_report') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

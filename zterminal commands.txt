@@ -1,0 +1,86 @@
+CHEM-SHIELD LOCAL DEMO
+======================
+
+Run every local service (PLC, process simulator, machine HMI, Admin Console,
+Attack Console, and OT Defense Dashboard) from the repository root:
+
+    chem_shield_p1/.venv/bin/python -m scripts.run_all
+
+Open:
+    Admin Console:          http://127.0.0.1:5000
+    Machine HMI:            http://127.0.0.1:15000
+    Attack Console:         http://127.0.0.1:5001
+    OT Defense Dashboard:   http://127.0.0.1:15080
+
+The Admin Console is the navigation hub for incidents, scenario operations,
+audit, and the OT Defense Dashboard. The dashboard's Machine view reads HMI
+status; its reactor-twin controls affect only the local simulation.
+
+Press Ctrl+C in the launcher terminal to stop all services. To stop a running
+demo from another terminal:
+
+    chem_shield_p1/.venv/bin/python -m scripts.stop_all
+
+RUN EACH SERVICE IN A SEPARATE TERMINAL (MANUAL STARTUP)
+=======================================================
+
+Use this section only if you want to start the services yourself. Open six
+terminals, set each terminal's working directory to the repository root, then
+run one command in each terminal. Start Terminal 1 first and wait for it to
+start before running the other commands.
+
+Do not run these commands while `scripts.run_all` is already running; choose
+either the one-command launcher above or this manual method.
+
+Terminal 1 - Virtual PLC (start first):
+
+    chem_shield_p1/.venv/bin/python -m chem_shield_p1.plc.modbus_plc --host 127.0.0.1 --port 15020
+
+Terminal 2 - Process simulator:
+
+    chem_shield_p1/.venv/bin/python -m chem_shield_p1.process.main --host 127.0.0.1 --port 15020 --database chem_shield_p1/data/telemetry.db
+
+Terminal 3 - Machine HMI:
+
+    chem_shield_p1/.venv/bin/python -m chem_shield_p1.hmi.app --host 127.0.0.1 --port 15000 --plc-port 15020 --database chem_shield_p1/data/telemetry.db
+
+Terminal 4 - Admin Console:
+
+    chem_shield_p1/.venv/bin/python -m admin_part.app --port 5000
+
+Terminal 5 - Attack Console:
+
+    chem_shield_p1/.venv/bin/python -m the_attack.app --host 127.0.0.1 --port 5001 --plc-port 15020 --database chem_shield_p1/data/telemetry.db
+
+Terminal 6 - OT Defense Dashboard:
+
+    CHEM_SHIELD_P8_PORT=15080 CHEM_SHIELD_P8_ADMIN_URL=http://127.0.0.1:5000 chem_shield_p1/.venv/bin/python -m chem_shield_p8.run
+
+Open the URLs listed above after the services have started. To stop manual
+startup, press Ctrl+C in each service terminal, or run the `scripts.stop_all`
+command above from another terminal.
+
+FIRST-TIME ADMIN ACCOUNT
+========================
+
+Create an administrator once, from the repository root:
+
+    chem_shield_p1/.venv/bin/python -m admin_part.manage_users create admin --role administrator
+
+List configured accounts:
+
+    chem_shield_p1/.venv/bin/python -m admin_part.manage_users list
+
+Account deletion is optional and permanent:
+
+    chem_shield_p1/.venv/bin/python -m admin_part.manage_users delete USER_NAME
+
+RUN THE OFFLINE ANALYSIS PIPELINE (OPTIONAL)
+============================================
+
+This is separate from the live services and can be run after the demo starts:
+
+    chem_shield_p1/.venv/bin/python -m scripts.run_chain --step-by-step
+
+Add --publish only when you intentionally want its scored analysis events sent
+to the loopback machine HMI.

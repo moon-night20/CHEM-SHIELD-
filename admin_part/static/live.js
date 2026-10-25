@@ -6,6 +6,9 @@
   const keys = ["rpm", "temperature", "pressure", "power"];
   let requestPending = false;
   let lastGoodAt = null;
+  let currentCriticalIssue = null;
+  let previousCriticalKey = null;
+  let wasCritical = false;
 
   const setText = (panel, selector, value) => {
     const element = panel.querySelector(selector);
@@ -142,6 +145,91 @@
     }
   };
 
+  const updateCriticalMachineIssue = (issue) => {
+    const notice = document.querySelector("[data-critical-machine-issue]");
+    if (!notice) return;
+    const reloadOnCritical = notice.hasAttribute("data-reload-on-critical");
+    const title = notice.querySelector("[data-critical-machine-title]");
+    const detail = notice.querySelector("[data-critical-machine-detail]");
+    const enableAlerts = notice.querySelector("[data-enable-machine-alerts]");
+    currentCriticalIssue = issue?.active ? issue : null;
+    const reloadKey = "chem-shield-machine-critical-reload";
+    if (enableAlerts && "Notification" in window) {
+      enableAlerts.hidden = Notification.permission === "granted";
+      enableAlerts.disabled = Notification.permission === "denied";
+      enableAlerts.textContent = Notification.permission === "denied"
+        ? "Desktop alerts blocked by browser"
+        : "Enable desktop alerts";
+    }
+    if (issue?.active) {
+      const causes = [];
+      if (issue.reading_critical) {
+        const sensor = issue.sensor || "machine sensor";
+        const ratio = issue.risk_score == null ? "" : ` (${Number(issue.risk_score).toFixed(3)}× configured limit)`;
+        causes.push(`${sensor} is over its configured limit${ratio}`);
+      }
+      if (issue.detector_critical) {
+        const ids = Array.isArray(issue.incident_ids) ? issue.incident_ids : [];
+        causes.push(ids.length
+          ? `critical detector incident${ids.length > 1 ? "s" : ""}: ${ids.join(", ")}`
+          : "the live detector reports CRITICAL risk");
+      }
+      title.textContent = "CRITICAL MACHINE ISSUE DETECTED";
+      detail.textContent = causes.join(". ") + ".";
+      notice.className = "critical-machine-notice critical";
+      if (reloadOnCritical && sessionStorage.getItem(reloadKey) !== "1") {
+        sessionStorage.setItem(reloadKey, "1");
+        window.location.reload();
+        return;
+      }
+      const issueKey = [
+        issue.reading_critical ? `reading:${issue.sensor || "machine"}` : "",
+        ...(Array.isArray(issue.incident_ids) ? issue.incident_ids : []),
+        issue.detector_critical && !issue.incident_ids?.length ? "detector-critical" : "",
+      ].filter(Boolean).join("|");
+      if (
+        (issueKey !== previousCriticalKey || !wasCritical)
+        && "Notification" in window
+        && Notification.permission === "granted"
+      ) {
+        new Notification("CHEM-SHIELD: Critical machine issue", {
+          body: causes.join(". "),
+          tag: `chem-shield-critical-${issueKey}`,
+        });
+      }
+      previousCriticalKey = issueKey;
+      wasCritical = true;
+      return;
+    }
+    wasCritical = false;
+    previousCriticalKey = null;
+    if (issue?.available) sessionStorage.removeItem(reloadKey);
+    if (issue?.available) {
+      title.textContent = "NO CRITICAL MACHINE ISSUE DETECTED";
+      detail.textContent = "Current machine readings and detector risk are below the CRITICAL level.";
+      notice.className = "critical-machine-notice clear";
+      return;
+    }
+    title.textContent = "CRITICAL STATUS UNAVAILABLE";
+    detail.textContent = "The machine or detector feed is unavailable; critical status cannot be confirmed.";
+    notice.className = "critical-machine-notice unavailable";
+  };
+
+  document.querySelector("[data-enable-machine-alerts]")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    if (!("Notification" in window)) return;
+    const permission = await Notification.requestPermission();
+    button.hidden = permission === "granted";
+    button.disabled = permission === "denied";
+    button.textContent = permission === "denied"
+      ? "Desktop alerts blocked by browser"
+      : "Enable desktop alerts";
+    if (permission === "granted" && currentCriticalIssue) {
+      previousCriticalKey = null;
+      updateCriticalMachineIssue(currentCriticalIssue);
+    }
+  });
+
   const refresh = async () => {
     if (requestPending) return;
     requestPending = true;
@@ -152,6 +240,7 @@
       });
       if (!response.ok) throw new Error(`Live feed returned HTTP ${response.status}`);
       const live = await response.json();
+      updateCriticalMachineIssue(live.critical_issue);
       riskPanels.forEach((panel) => updateLiveRisk(panel, live.risk));
       panels.forEach((panel) => updateMachineRisk(panel, live.machine_risk));
       const fetchedAt = Date.parse(live.fetched_at || "");
@@ -176,6 +265,7 @@
         updateTrend(panel, live.telemetry?.data);
       });
     } catch (error) {
+      updateCriticalMachineIssue({available: false, active: false});
       riskPanels.forEach((panel) => updateLiveRisk(
         panel,
         { ok: false, error: error instanceof Error ? error.message : "Live feed unavailable" },

@@ -263,9 +263,12 @@ def test_dashboard_counts_live_ot_risk_incidents(setup_console):
     assert b">Defense Dashboard</a>" in response.data
     assert b"Read-only machine health, OT detections" in response.data
     assert b"http://127.0.0.1:15080" in response.data
+    assert b"SUPERVISORY RISK OVERVIEW" in response.data
     assert b"HIGH-RISK INCIDENTS REQUIRE REVIEW" in response.data
     assert b"INC-OT-001" in response.data
-    assert b">HIGH</span><strong>1</strong>" in response.data
+    assert b"CRITICAL DETECTOR ALERT" in response.data
+    assert b"critical items" in response.data
+    assert b"1</strong> high risk" in response.data
 
 
 def test_login_unknown_and_wrong_password_have_same_message(setup_console):
@@ -399,6 +402,9 @@ def test_role_navigation_and_machine_offline_status(setup_console):
     machine = client.get("/machine")
     assert machine.status_code == 200
     assert b"OFFLINE" in machine.data
+    assert b"CHECKING CRITICAL STATUS" in machine.data
+    assert b"data-reload-on-critical" in machine.data
+    assert machine.data.count(b'data-machine-risk-level') == 1
     assert b"START" not in machine.data
 
 
@@ -406,6 +412,18 @@ def test_administrator_navigation_includes_audit_and_users(setup_console):
     _, client, *_ = setup_console
     login(client, "admin", "Admin-password-123")
     response = client.get("/dashboard")
+    assert b"Scenario Command Center" in response.data
+    assert b"Timeline" not in response.data
+    for route in (
+        "/dashboard",
+        "/machine",
+        "/incidents",
+        "/p7/command-center",
+        "/users",
+        "/audit",
+    ):
+        assert f'href="{route}"'.encode() in response.data
+    assert b'href="http://127.0.0.1:15080"' in response.data
     assert b"Audit" in response.data
     assert b"Users" in response.data
 
@@ -672,6 +690,117 @@ def test_live_api_returns_machine_data_and_safe_offline_result(setup_console):
     assert offline_data["ok"] is False
     assert offline_data["state"]["data"] is None
     assert offline_data["state"]["error"] == "connection refused"
+
+
+def test_machine_critical_issue_reports_sensor_and_detector_critical_state(setup_console):
+    app, client, *_ = setup_console
+    login(client, "analyst", "Analyst-password-123")
+    machine = app.extensions["machine_client"]
+    fetched_at = "2026-10-18T00:00:00Z"
+    machine.responses.update({
+        "state": {
+            "ok": True,
+            "data": {
+                "temperature": 75,
+                "pressure": 2,
+                "power": 6,
+                "rpm": 750,
+                "limits": {
+                    "temperature": {"high": 70},
+                    "pressure": {"high": 4},
+                    "power": {"high": 12},
+                    "speed": {"high": 1500},
+                },
+            },
+            "error": None,
+            "fetched_at": fetched_at,
+        },
+        "connection": {"ok": True, "data": {}, "error": None, "fetched_at": fetched_at},
+        "risk": {
+            "ok": True,
+            "data": {
+                "risk_level": "CRITICAL",
+                "active_incidents": [{
+                    "incident_id": "INC-CRITICAL-01",
+                    "risk_level": "CRITICAL",
+                }],
+            },
+            "error": None,
+            "fetched_at": fetched_at,
+        },
+        "telemetry": {"ok": True, "data": [], "error": None, "fetched_at": fetched_at},
+    })
+
+    critical = client.get("/api/live").get_json()["critical_issue"]
+
+    assert critical == {
+        "available": True,
+        "active": True,
+        "reading_critical": True,
+        "detector_critical": True,
+        "sensor": "temperature",
+        "risk_score": 1.071,
+        "incident_ids": ["INC-CRITICAL-01"],
+    }
+
+    machine.responses["risk"]["data"] = {
+        "risk_level": "LOW",
+        "active_incidents": [],
+    }
+    machine.responses["state"]["data"]["temperature"] = 60
+    clear = client.get("/api/live").get_json()["critical_issue"]
+    assert clear["available"] is True
+    assert clear["active"] is False
+
+
+def test_machine_critical_alert_from_hmi_state_overrides_unassessed_detector(setup_console):
+    app, client, *_ = setup_console
+    login(client, "admin", "Admin-password-123")
+    fetched_at = "2026-10-24T19:42:00Z"
+    app.extensions["machine_client"].responses.update({
+        "state": {
+            "ok": True,
+            "data": {
+                "machine_condition": "CRITICAL",
+                "temperature": 100.0,
+                "limit_alerts": [{
+                    "message": "temperature 100 degC exceeds the 70 degC upper limit",
+                    "sensor": "temperature",
+                    "severity": "critical",
+                    "threshold": 70,
+                    "unit": "degC",
+                    "value": 100.0,
+                }],
+            },
+            "error": None,
+            "fetched_at": fetched_at,
+        },
+        "connection": {"ok": True, "data": {}, "error": None, "fetched_at": fetched_at},
+        "risk": {
+            "ok": True,
+            "data": {
+                "risk_level": "UNASSESSED",
+                "incident": None,
+                "active_incidents": [],
+                "input_status": "STALE",
+            },
+            "error": None,
+            "fetched_at": fetched_at,
+        },
+        "telemetry": {"ok": True, "data": [], "error": None, "fetched_at": fetched_at},
+    })
+
+    response = client.get("/api/live")
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload["machine_risk"] == {
+        "risk_level": "CRITICAL",
+        "risk_score": 1.429,
+        "sensor": "temperature",
+    }
+    assert payload["critical_issue"]["active"] is True
+    assert payload["critical_issue"]["reading_critical"] is True
 
 
 @pytest.mark.parametrize(

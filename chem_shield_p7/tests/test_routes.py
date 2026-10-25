@@ -46,6 +46,7 @@ def setup_app(tmp_path: Path):
 
 def test_part7_routes_require_login_and_csrf(tmp_path):
     _app, client = setup_app(tmp_path)
+    assert client.get("/p7/timeline").status_code == 404
     response = client.get("/p7/command-center")
     assert response.status_code == 302
     assert "/login" in response.headers["Location"]

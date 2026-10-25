@@ -182,7 +182,7 @@ def create_blueprint(admin_app) -> Blueprint:
                 return redirect(url_for("p7.scenarios_page"))
             return jsonify({"error": str(error)}), 409
         if not request.is_json:
-            return redirect(url_for("p7.timeline_page", run_id=run_id))
+            return redirect(url_for("p7.command_center_page"))
         return jsonify({"ok": True, "run_id": run_id}), 202
 
     @blueprint.post("/scenarios/abort")
@@ -196,17 +196,6 @@ def create_blueprint(admin_app) -> Blueprint:
         status = runner.status()
         run = store.get_run(status.get("run_id")) if status.get("run_id") else store.latest_run()
         return jsonify({"runner": status, "run": run})
-
-    @blueprint.get("/timeline")
-    def timeline_page():
-        run_id = request.args.get("run_id")
-        run = _latest_run(store, run_id) if run_id else store.latest_run()
-        return render_template(
-            "p7_timeline.html",
-            username=session["username"],
-            role=session["role"],
-            run=run,
-        )
 
     @blueprint.get("/api/timeline")
     def timeline_api():

@@ -83,6 +83,32 @@ def _machine_risk_assessment(state: Any) -> dict[str, Any]:
     if not isinstance(state, dict):
         return {"risk_level": "UNAVAILABLE", "risk_score": None, "sensor": None}
 
+    limit_alerts = state.get("limit_alerts")
+    critical_alerts = [
+        alert
+        for alert in limit_alerts
+        if isinstance(alert, dict)
+        and str(alert.get("severity", "")).upper() == "CRITICAL"
+    ] if isinstance(limit_alerts, list) else []
+    if str(state.get("machine_condition", "")).upper() == "CRITICAL" or critical_alerts:
+        alert = critical_alerts[0] if critical_alerts else {}
+        value = alert.get("value")
+        threshold = alert.get("threshold")
+        score = None
+        if (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and isinstance(threshold, (int, float))
+            and not isinstance(threshold, bool)
+            and threshold > 0
+        ):
+            score = round(float(value) / float(threshold), 3)
+        return {
+            "risk_level": "CRITICAL",
+            "risk_score": score,
+            "sensor": alert.get("sensor"),
+        }
+
     ratios = []
     for sensor, state_key in (
         ("temperature", "temperature"),
@@ -120,6 +146,56 @@ def _machine_risk_assessment(state: Any) -> dict[str, Any]:
         "risk_level": level,
         "risk_score": round(score, 3),
         "sensor": sensor,
+    }
+
+
+def _critical_machine_issue(
+    machine_risk: dict[str, Any], risk_result: Any, *, state_available: bool
+) -> dict[str, Any]:
+    risk_data = (
+        risk_result.get("data")
+        if isinstance(risk_result, dict) and risk_result.get("ok")
+        else None
+    )
+    detector_level = (
+        str(risk_data.get("risk_level", "")).upper()
+        if isinstance(risk_data, dict)
+        else ""
+    )
+    latest_incident = risk_data.get("incident") if isinstance(risk_data, dict) else None
+    active_incidents = (
+        risk_data.get("active_incidents", [])
+        if isinstance(risk_data, dict)
+        else []
+    )
+    critical_incidents = [
+        str(incident["incident_id"])
+        for incident in active_incidents
+        if isinstance(incident, dict)
+        and str(incident.get("risk_level", "")).upper() == "CRITICAL"
+        and incident.get("incident_id")
+    ] if isinstance(active_incidents, list) else []
+    detector_critical = detector_level == "CRITICAL" or bool(critical_incidents)
+    if (
+        isinstance(latest_incident, dict)
+        and str(latest_incident.get("risk_level", "")).upper() == "CRITICAL"
+        and latest_incident.get("incident_id")
+    ):
+        incident_id = str(latest_incident["incident_id"])
+        if incident_id not in critical_incidents:
+            critical_incidents.append(incident_id)
+        detector_critical = True
+    reading_critical = machine_risk.get("risk_level") == "CRITICAL"
+    return {
+        "available": state_available and bool(
+            isinstance(risk_result, dict) and risk_result.get("ok")
+        ),
+        "active": reading_critical or detector_critical,
+        "reading_critical": reading_critical,
+        "detector_critical": detector_critical,
+        "sensor": machine_risk.get("sensor") if reading_critical else None,
+        "risk_score": machine_risk.get("risk_score") if reading_critical else None,
+        "incident_ids": critical_incidents,
     }
 
 
@@ -563,6 +639,16 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
                     incident for incident in incidents
                     if incident["event_counts"]["physical"] > 0
                 ]
+            critical_incidents = [
+                incident
+                for incident in incidents
+                if str(incident.get("risk_level", "")).upper() == "CRITICAL"
+                or any(
+                    str(warning.get("severity", "")).upper() == "CRITICAL"
+                    for warning in incident.get("warning_details", [])
+                    if isinstance(warning, dict)
+                )
+            ]
             counts = {
                 level: sum(incident.get("risk_level") == level for incident in incidents)
                 for level in RISK_LEVELS
@@ -575,11 +661,13 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         except (OSError, sqlite3.Error, ValueError, TypeError) as error:
             app.logger.exception("Admin dashboard could not load its data")
             incidents, errors, updated, login_alerts = [], [str(error)], None, []
+            critical_incidents = []
             source_label = "unavailable"
             counts = {level: 0 for level in RISK_LEVELS}
         return render_template(
             "dashboard.html",
             incidents=incidents,
+            critical_incidents=critical_incidents,
             errors=errors,
             chain_updated=updated,
             counts=counts,
@@ -598,6 +686,11 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         state = live.get("state", {})
         state_data = state.get("data") if isinstance(state, dict) and state.get("ok") else None
         live["machine_risk"] = _machine_risk_assessment(state_data)
+        live["critical_issue"] = _critical_machine_issue(
+            live["machine_risk"],
+            live.get("risk"),
+            state_available=bool(isinstance(state, dict) and state.get("ok")),
+        )
         return jsonify(live)
 
     @app.get("/machine")

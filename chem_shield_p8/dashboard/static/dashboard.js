@@ -43,6 +43,11 @@ function showMessage(message) {
   }, 6000);
 }
 
+function showControlMessage(message) {
+  byId("twin-control-message").textContent = message;
+  showMessage(message);
+}
+
 function updateGauge(elementId, valueId, level, label) {
   const gauge = byId(elementId);
   gauge.classList.remove("warning", "critical");
@@ -80,6 +85,29 @@ function renderPlant(snapshot) {
   byId("twin-updated").textContent = `TWIN UPDATED ${new Date(snapshot.timestamp).toLocaleTimeString()}`;
 }
 
+function renderTwinControls(snapshot) {
+  const simulation = snapshot.simulation || {running: true, controls: {}};
+  const controls = simulation.controls || {};
+  const running = simulation.running !== false;
+  const engineState = byId("twin-engine-state");
+  engineState.textContent = running ? "TWIN ENGINE RUNNING" : "TWIN ENGINE PAUSED";
+  engineState.className = `status-badge ${running ? "normal" : "warning"}`;
+  const engineButton = byId("twin-engine-toggle");
+  engineButton.textContent = running ? "Ⅱ PAUSE TWIN" : "▶ RESUME TWIN";
+  engineButton.setAttribute("aria-pressed", String(running));
+
+  const pumpOn = controls.feed_pump_on !== false;
+  const pumpButton = byId("twin-pump-toggle");
+  pumpButton.textContent = pumpOn ? "STOP SIMULATED PUMP" : "START SIMULATED PUMP";
+  pumpButton.setAttribute("aria-pressed", String(pumpOn));
+
+  const target = Number(controls.coolant_valve_pct ?? 40);
+  const slider = byId("coolant-target");
+  if (document.activeElement !== slider) slider.value = String(target);
+  byId("coolant-target-value").textContent = `${slider.value}%`;
+  byId("coolant-apply").disabled = Number(slider.value) === target;
+}
+
 function renderPhysics(snapshot) {
   const physics = snapshot.physics_guard;
   byId("physics-score").textContent = Number(physics.physics_score).toFixed(2);
@@ -92,6 +120,85 @@ function renderPhysics(snapshot) {
   for (const finding of physics.findings || []) {
     list.append(element("li", "", `${finding.severity}: ${finding.message}`));
   }
+}
+
+function renderDetection(snapshot) {
+  const physics = snapshot.backend.ai_ml;
+  for (const [id, value] of [
+    ["detection-physics-score", physics.physics_score],
+    ["detection-ml-score", physics.ml_score],
+  ]) byId(id).textContent = Number(value).toFixed(2);
+  byId("detection-physics-bar").style.width = `${Math.min(100, Math.max(0, physics.physics_score * 100))}%`;
+  byId("detection-ml-bar").style.width = `${Math.min(100, Math.max(0, physics.ml_score * 100))}%`;
+  byId("detection-model-state").textContent = physics.model_enabled ? "MODEL ACTIVE" : "MODEL DISABLED";
+  byId("detection-model-explanation").textContent = snapshot.physics_guard.explanation;
+  const findings = byId("detection-findings");
+  findings.replaceChildren();
+  for (const finding of snapshot.physics_guard.findings || []) {
+    findings.append(element("li", "", `${finding.severity}: ${finding.message}`));
+  }
+}
+
+function renderBackend(snapshot) {
+  const backend = snapshot.backend;
+  const {network, ot, ai_ml: aiMl, correlation, alerts, sis} = backend;
+  byId("backend-refresh-time").textContent = `UPDATED ${new Date(snapshot.timestamp).toLocaleTimeString()}`;
+  byId("backend-network-value").textContent = network.event_count
+    ? `${network.event_count} EVENTS`
+    : "AWAITING REPLAY";
+  byId("backend-network-detail").textContent =
+    `${network.protocols.join(", ") || "No protocol events"} · ${network.write_count} writes · ${network.alert_count} network alerts`;
+  byId("backend-ot-value").textContent = `${ot.blocked_flows} BLOCKED · ${ot.allowed_flows} ALLOWED`;
+  byId("backend-ot-detail").textContent = `${ot.event_count} inspected events · ${ot.asset_count} discovered assets`;
+  byId("backend-ml-value").textContent = aiMl.model_enabled ? "RULES + ML ACTIVE" : "ML DISABLED";
+  byId("backend-ml-detail").textContent =
+    `Physics ${Number(aiMl.physics_score).toFixed(2)} · ML ${Number(aiMl.ml_score).toFixed(2)} · ${aiMl.finding_count} findings`;
+  byId("backend-risk-value").textContent = `${correlation.incident_count} INCIDENT${correlation.incident_count === 1 ? "" : "S"}`;
+  byId("backend-risk-detail").textContent =
+    `${correlation.dual_signal_count} dual-signal · ${correlation.validation_error_count} validation errors`;
+  byId("backend-alert-value").textContent = `${alerts.count} ALERT${alerts.count === 1 ? "" : "S"}`;
+  byId("backend-alert-detail").textContent =
+    `${alerts.critical_count} critical · ${alerts.high_count} high · ${alerts.rules.join(", ") || "No rule hits"}`;
+  byId("backend-sis-value").textContent = sis.integrity_ok ? sis.status : "INTEGRITY ERROR";
+  byId("backend-sis-detail").textContent = sis.integrity_ok
+    ? "Signed baseline · hash chain verified"
+    : "Check local P8 SIS audit chain";
+
+  byId("correlation-count").textContent =
+    `${correlation.incident_count} INCIDENT${correlation.incident_count === 1 ? "" : "S"} · ${correlation.dual_signal_count} DUAL-SIGNAL`;
+  const table = byId("correlation-table");
+  table.replaceChildren();
+  if (!correlation.incidents.length) {
+    const row = element("tr");
+    const cell = element("td", "empty-state", "No detector events to correlate yet. Run a local synthetic scenario; independent asset identities remain separate.");
+    cell.colSpan = 7;
+    row.append(cell);
+    table.append(row);
+  } else {
+    for (const incident of correlation.incidents) {
+      const row = document.createElement("tr");
+      const signals = [
+        incident.network_present ? "NETWORK" : null,
+        incident.physical_present ? "PHYSICAL" : null,
+      ].filter(Boolean).join(" + ") || "—";
+      const risk = incident.risk;
+      for (const value of [
+        incident.incident_id,
+        incident.asset_id,
+        signals,
+        Number(risk.network_score).toFixed(2),
+        Number(risk.physical_score).toFixed(2),
+        Number(risk.final_risk).toFixed(3),
+      ]) row.append(element("td", "", value));
+      const level = element("td");
+      level.append(element("span", `severity-pill ${risk.risk_level.toLowerCase()}`, risk.risk_level));
+      row.append(level);
+      table.append(row);
+    }
+  }
+  byId("correlation-note").textContent = correlation.validation_error_count
+    ? `P4 rejected ${correlation.validation_error_count} malformed detector event(s); valid events were still analyzed.`
+    : "P4 correlation and the weighted risk engine ran on validated, local synthetic detector output; no incident data was persisted.";
 }
 
 function renderZones(snapshot) {
@@ -364,7 +471,10 @@ function render(snapshot) {
   byId("connection-status").textContent = "LIVE · LOCAL";
   byId("connection-status").classList.add("online");
   renderPlant(snapshot);
+  renderTwinControls(snapshot);
   renderPhysics(snapshot);
+  renderDetection(snapshot);
+  renderBackend(snapshot);
   renderZones(snapshot);
   renderCompliance(snapshot);
   renderScenarioControls(snapshot);
@@ -374,6 +484,55 @@ function render(snapshot) {
   renderResponse(snapshot);
   renderIntegration(snapshot);
 }
+
+function activateView(view) {
+  const tab = document.querySelector(`[data-view-target="${view}"]`);
+  const content = document.querySelector(`[data-view-content="${view}"]`);
+  if (!tab || !content) return;
+  for (const item of document.querySelectorAll("[data-view-target]")) {
+    const selected = item === tab;
+    item.classList.toggle("active", selected);
+    item.setAttribute("aria-selected", String(selected));
+    item.tabIndex = selected ? 0 : -1;
+  }
+  for (const panel of document.querySelectorAll("[data-view-content]")) {
+    panel.hidden = panel !== content;
+  }
+}
+
+for (const tab of document.querySelectorAll("[data-view-target]")) {
+  tab.addEventListener("click", () => {
+    const view = tab.dataset.viewTarget;
+    if (view) {
+      activateView(view);
+      window.location.hash = view;
+    }
+  });
+  tab.addEventListener("keydown", (event) => {
+    const tabs = [...document.querySelectorAll("[data-view-target]")];
+    const index = tabs.indexOf(tab);
+    const next = event.key === "ArrowRight" ? (index + 1) % tabs.length
+      : event.key === "ArrowLeft" ? (index - 1 + tabs.length) % tabs.length
+        : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : -1;
+    if (next >= 0) {
+      event.preventDefault();
+      tabs[next].focus();
+      tabs[next].click();
+    }
+  });
+}
+
+for (const button of document.querySelectorAll("[data-open-view]")) {
+  button.addEventListener("click", () => {
+    const view = button.dataset.openView;
+    if (view) {
+      activateView(view);
+      window.location.hash = view;
+    }
+  });
+}
+window.addEventListener("hashchange", () => activateView(window.location.hash.slice(1) || "overview"));
+activateView(window.location.hash.slice(1) || "overview");
 
 async function refreshSnapshot() {
   try {
@@ -392,6 +551,55 @@ byId("scenario-play").addEventListener("click", async () => {
     render(result);
     showMessage("Synthetic scenario started; no traffic was sent.");
   } catch (error) { showMessage(error.message); }
+});
+
+byId("twin-engine-toggle").addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const running = !latestSnapshot?.simulation?.running;
+    render(await postJson("/api/twin/playback", {running}));
+    showControlMessage(running ? "Local reactor twin resumed." : "Local reactor twin paused; monitoring remains online.");
+  } catch (error) {
+    showControlMessage(error.message);
+  } finally {
+    button.disabled = false;
+  }
+});
+
+byId("twin-pump-toggle").addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const pumpOn = latestSnapshot?.simulation?.controls?.feed_pump_on !== true;
+    render(await postJson("/api/twin/controls", {feed_pump_on: pumpOn}));
+    showControlMessage(`Local simulated feed pump ${pumpOn ? "started" : "stopped"}.`);
+  } catch (error) {
+    showControlMessage(error.message);
+  } finally {
+    button.disabled = false;
+  }
+});
+
+byId("coolant-target").addEventListener("input", (event) => {
+  byId("coolant-target-value").textContent = `${event.currentTarget.value}%`;
+  const current = Number(latestSnapshot?.simulation?.controls?.coolant_valve_pct ?? 40);
+  byId("coolant-apply").disabled = Number(event.currentTarget.value) === current;
+});
+
+byId("coolant-apply").addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const coolantValvePct = Number(byId("coolant-target").value);
+    render(await postJson("/api/twin/controls", {coolant_valve_pct: coolantValvePct}));
+    showControlMessage(`Local coolant-valve target set to ${coolantValvePct}%.`);
+  } catch (error) {
+    showControlMessage(error.message);
+  } finally {
+    const current = Number(latestSnapshot?.simulation?.controls?.coolant_valve_pct ?? 40);
+    button.disabled = Number(byId("coolant-target").value) === current;
+  }
 });
 
 byId("scenario-pause").addEventListener("click", async () => {

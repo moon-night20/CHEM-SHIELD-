@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Part 7 Scenarios - CHEM-SHIELD{% endblock %}
+{% block title %}Scenario Library - CHEM-SHIELD{% endblock %}
 {% block content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='p7.css') }}">
 <main class="p7-shell">
-  <header class="p7-heading"><div><p class="p7-eyebrow">PART 7 / CONTROLLED SIMULATION</p><h1>Scenario library</h1>
+  <header class="p7-heading"><div><p class="p7-eyebrow">CONTROLLED OT SIMULATION</p><h1>Scenario library</h1>
     <p>Each scenario uses the existing loopback OT Command Console API and clears its overrides on completion or abort.</p></div>
     <a class="p7-button secondary" href="{{ url_for('p7.command_center_page') }}">Command Center</a></header>
   <section class="p7-scenario-list p7-scenario-page">

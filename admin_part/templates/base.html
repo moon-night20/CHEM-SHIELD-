@@ -17,8 +17,7 @@
       <a class="nav-link" href="{{ url_for('dashboard') }}">Dashboard</a>
       <a class="nav-link" href="{{ url_for('machine') }}">Machine</a>
       <a class="nav-link" href="{{ url_for('incidents_page') }}">Incidents</a>
-      <a class="nav-link" href="{{ url_for('p7.command_center_page') }}" title="Guided scenarios and simulated responses only; does not control physical equipment">Command Center</a>
-      <a class="nav-link" href="{{ url_for('p7.timeline_page') }}" title="Read-only review of local machine and scenario events">Timeline</a>
+      <a class="nav-link" href="{{ url_for('p7.command_center_page') }}" title="Guided scenarios and simulated responses only; does not control physical equipment">Scenario Command Center</a>
       {% if role == "administrator" %}
         <a class="nav-link" href="{{ url_for('users_page') }}">Users</a>
         <a class="nav-link" href="{{ url_for('audit_page') }}">Audit</a>

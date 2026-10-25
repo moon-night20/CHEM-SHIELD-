@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Part 7 Audit Integrity - CHEM-SHIELD{% endblock %}
+{% block title %}Audit Integrity - CHEM-SHIELD{% endblock %}
 {% block content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='p7.css') }}">
 <main class="p7-shell">
-  <header class="p7-heading"><div><p class="p7-eyebrow">PART 7 / TAMPER-EVIDENT AUDIT</p><h1>Audit integrity</h1>
+  <header class="p7-heading"><div><p class="p7-eyebrow">TAMPER-EVIDENT AUDIT</p><h1>Audit integrity</h1>
     <p>Existing Admin audit rows are mirrored into an additive SHA-256 hash chain. Original history is not rewritten.</p></div></header>
   <section class="p7-panel">
     <button id="p7-verify-integrity" type="button">Verify log integrity</button>

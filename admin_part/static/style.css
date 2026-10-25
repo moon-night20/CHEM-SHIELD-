@@ -527,21 +527,123 @@ textarea {
 }
 
 .risk-banner {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 18px;
-  margin: 18px 0;
-  padding: 20px;
+  display: grid;
+  justify-items: center;
+  margin: 18px auto 24px;
+  padding: 24px;
+  max-width: 980px;
   border: 1px solid #8f7330;
-  border-left: 5px solid #ff6575;
+  border-top: 5px solid #ff6575;
   border-radius: 12px;
   background: #231d1f;
 }
 
+.risk-overview {
+  width: min(100%, 780px);
+  text-align: center;
+}
+
 .risk-banner .eyebrow {
-  margin-bottom: 8px;
-  color: #a9bacd;
+  margin-bottom: 7px;
+  color: #ffd166;
+  font-size: .82rem;
+  font-weight: 800;
+  letter-spacing: .13em;
+}
+
+.risk-overview h2 {
+  margin: 0;
+  font-size: clamp(1.2rem, 2.5vw, 1.8rem);
+}
+
+.risk-overview-counts {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin: 18px 0;
+}
+
+.risk-overview-counts span {
+  padding: 7px 11px;
+  border: 1px solid #3b506b;
+  border-radius: 999px;
+  color: #c5d3e3;
+  font-size: .88rem;
+}
+
+.risk-overview-counts .critical-count {
+  border-color: #a93648;
+  background: #401c27;
+  color: #ffd7dc;
+}
+
+.critical-count strong {
+  color: #ff6575;
+}
+
+.critical-incident-list {
+  display: grid;
+  gap: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+
+.critical-incident-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 11px 14px;
+  border: 1px solid #713342;
+  border-left: 4px solid #ff6575;
+  border-radius: 8px;
+  background: #171820;
+}
+
+.critical-incident-list li > a {
+  display: flex;
+  gap: 12px;
+  color: #e5edf7;
+  text-decoration: none;
+}
+
+.critical-incident-list li > a:hover strong,
+.critical-incident-list li > a:focus-visible strong {
+  text-decoration: underline;
+}
+
+.critical-incident-risk {
+  color: #ff9eaa;
+  font-size: .85rem;
+  font-weight: 700;
+}
+
+.no-critical-incidents {
+  margin: 0 0 16px;
+  color: #a9f3ce;
+}
+
+.risk-overview-link {
+  display: inline-flex;
+  padding: 9px 14px;
+  border: 1px solid #7ab8ff;
+  border-radius: 7px;
+  background: rgba(74, 108, 167, .18);
+  color: #dfeeff;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.risk-overview-link:hover,
+.risk-overview-link:focus-visible {
+  background: #1b2c40;
+  color: #ffffff;
 }
 
 .machine-state {
@@ -864,6 +966,51 @@ textarea {
   color: #ffc7cf;
 }
 
+.critical-machine-notice {
+  margin: 18px 0;
+  padding: 16px 20px;
+  border: 1px solid #52647b;
+  border-left: 6px solid #8ba0b8;
+  border-radius: 10px;
+  background: #152131;
+}
+
+.critical-machine-notice strong {
+  display: block;
+  font-size: 1.08rem;
+  letter-spacing: .04em;
+}
+
+.critical-machine-notice p {
+  margin: 7px 0;
+  color: #d7e1ec;
+}
+
+.critical-machine-notice.critical {
+  border-color: #b43c50;
+  border-left-color: #ff6575;
+  background: #351b24;
+  color: #ffd7dc;
+}
+
+.critical-machine-notice.critical strong {
+  color: #ff9aa6;
+}
+
+.critical-machine-notice.clear {
+  border-color: #287653;
+  border-left-color: #4bd29a;
+  background: #142b25;
+  color: #b9f4d9;
+}
+
+.critical-machine-notice.unavailable {
+  border-color: #8f7330;
+  border-left-color: #ffd166;
+  background: #2a2619;
+  color: #ffe79b;
+}
+
 .live-readings span {
   color: #a9bacd;
   font-size: .72rem;
@@ -942,7 +1089,7 @@ textarea {
 }
 
 @media (max-width: 720px) {
-  .page-heading, .risk-banner {
+  .page-heading {
     align-items: flex-start;
     flex-direction: column;
   }

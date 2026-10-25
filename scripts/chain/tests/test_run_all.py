@@ -52,7 +52,11 @@ def test_starts_readme_commands_in_order_without_network() -> None:
     ) -> None:
         readiness_checks.append((host, port, process))
         assert timeout == run_all.PLC_READY_TIMEOUT
-        assert len(launched) == 1
+        if port == run_all.PLC_PORT:
+            assert len(launched) == 1
+        else:
+            assert port == run_all.DEFENSE_PORT
+            assert len(launched) == 6
 
     output = StringIO()
     with patch.dict("os.environ", {}, clear=True), patch(
@@ -67,11 +71,13 @@ def test_starts_readme_commands_in_order_without_network() -> None:
         )
     try:
         assert [child.name for child in children] == [
-            "PLC", "Process", "HMI", "Admin", "OT Console"
+            "PLC", "Process", "HMI", "Admin", "OT Console", "Defense Dashboard"
         ]
-        assert len(readiness_checks) == 1
+        assert len(readiness_checks) == 2
         assert readiness_checks[0][:2] == ("127.0.0.1", 15020)
         assert readiness_checks[0][2] is launched[0]
+        assert readiness_checks[1][:2] == ("127.0.0.1", run_all.DEFENSE_PORT)
+        assert readiness_checks[1][2] is launched[-1]
 
         commands = [process.command for process in launched]
         assert [command[2] for command in commands] == [
@@ -80,6 +86,7 @@ def test_starts_readme_commands_in_order_without_network() -> None:
             "chem_shield_p1.hmi.app",
             "admin_part.app",
             "the_attack.app",
+            "chem_shield_p8.run",
         ]
         assert all("127.0.0.1" in command for command in commands[:3])
         assert all("15020" in command for command in commands[:3])
@@ -94,7 +101,9 @@ def test_starts_readme_commands_in_order_without_network() -> None:
             and environment["PYTHONUNBUFFERED"] == "1"
             for environment in environments
         )
-        assert len(environments) == 5
+        assert environments[0]["CHEM_SHIELD_P8_PORT"] == "15080"
+        assert environments[0]["CHEM_SHIELD_P8_ADMIN_URL"] == "http://127.0.0.1:5002"
+        assert len(environments) == 6
         assert all(
             environment["CHEM_SHIELD_INGEST_TOKEN"] == "shared-demo-token"
             for environment in environments

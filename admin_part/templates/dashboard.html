@@ -8,17 +8,42 @@
     </div>
     <p class="safety-label">Simulation only - decisions are recorded, not executed.</p>
   </section>
-  <section class="risk-banner" aria-label="Current risk summary">
-    <div>
+  <section class="risk-banner" aria-label="Supervisor risk overview">
+    <div class="risk-overview">
       <p class="eyebrow">SUPERVISORY RISK OVERVIEW</p>
-      <strong>
+      <h2>
         {% if counts.CRITICAL %}CRITICAL INCIDENTS REQUIRE REVIEW
         {% elif counts.HIGH %}HIGH-RISK INCIDENTS REQUIRE REVIEW
         {% elif incidents %}INCIDENTS UNDER REVIEW
         {% else %}NO INCIDENTS REPORTED{% endif %}
-      </strong>
+      </h2>
+      <div class="risk-overview-counts" aria-label="Incidents by risk level">
+        <span class="critical-count"><strong>{{ critical_incidents|length }}</strong> critical items</span>
+        <span><strong>{{ counts.HIGH }}</strong> high risk</span>
+        <span><strong>{{ counts.MEDIUM }}</strong> medium risk</span>
+        <span><strong>{{ counts.LOW }}</strong> low risk</span>
+      </div>
+      {% if critical_incidents %}
+        <ul class="critical-incident-list" aria-label="Critical incidents requiring attention">
+          {% for incident in critical_incidents %}
+            <li>
+              <a href="{{ url_for('incident_detail', incident_id=incident.incident_id) }}">
+                <strong>{{ incident.incident_id }}</strong>
+                <span>{{ incident.asset_id }}</span>
+              </a>
+              <span class="critical-incident-risk">
+                {% if incident.risk_level|upper == "CRITICAL" %}CRITICAL RISK
+                {% else %}CRITICAL DETECTOR ALERT{% endif %}
+                · score {{ incident.risk_score if incident.risk_score is not none else "unavailable" }}
+              </span>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="no-critical-incidents">No critical risk incidents or critical detector alerts are active.</p>
+      {% endif %}
+      <a class="risk-overview-link" href="{{ url_for('incidents_page') }}">Review all incidents →</a>
     </div>
-    <a href="{{ url_for('incidents_page') }}">Open incident register</a>
   </section>
   {% include "_live_panel.html" %}
   {% include "_live_risk_panel.html" %}
@@ -30,14 +55,6 @@
       <p>Run: <code>python -m scripts.run_chain</code></p>
     </section>
   {% endif %}
-
-  <section class="summary-grid" aria-label="Incident counts by risk level">
-    {% for level, count in counts.items() %}
-      <article class="summary-card {{ level|lower }}-card">
-        <span>{{ level }}</span><strong>{{ count }}</strong>
-      </article>
-    {% endfor %}
-  </section>
 
   <section class="panel">
   <div class="panel-heading">
@@ -85,7 +102,7 @@
         </table>
       </div>
     {% elif not errors %}
-      <p class="empty-state">No incidents are present in the P4 chain output.</p>
+      <p class="empty-state">No incidents are present in the latest analysis output.</p>
     {% else %}
       <p class="empty-state">No incident data could be loaded. See the chain output message above.</p>
     {% endif %}

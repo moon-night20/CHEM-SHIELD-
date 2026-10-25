@@ -11,6 +11,7 @@ import time
 if __package__:
     from .run_all import (
         ADMIN_PORT,
+        DEFENSE_PORT,
         HMI_PORT,
         OT_CONSOLE_PORT,
         PLC_PORT,
@@ -22,6 +23,7 @@ if __package__:
 else:
     from run_all import (
         ADMIN_PORT,
+        DEFENSE_PORT,
         HMI_PORT,
         OT_CONSOLE_PORT,
         PLC_PORT,
@@ -37,7 +39,14 @@ SHUTDOWN_TIMEOUT = 5.0
 def stop_all(admin_port: int = ADMIN_PORT) -> int:
     """Terminate only CHEM-SHIELD processes bound to known service ports."""
 
-    ports = tuple(dict.fromkeys((PLC_PORT, HMI_PORT, ADMIN_PORT, OT_CONSOLE_PORT, admin_port)))
+    ports = tuple(dict.fromkeys((
+        PLC_PORT,
+        HMI_PORT,
+        ADMIN_PORT,
+        OT_CONSOLE_PORT,
+        DEFENSE_PORT,
+        admin_port,
+    )))
     services: dict[int, str] = {}
     for pid, command in _all_processes():
         if _is_chem_shield_process(command):

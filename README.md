@@ -324,7 +324,6 @@ After starting `run_all.py`, open the pages you need:
 - Supervisor/Admin console: **http://127.0.0.1:5000**
 - Attack Console: **http://127.0.0.1:5001**, or use its link in Admin
 - Command Center: **http://127.0.0.1:5000/p7/command-center**
-- Timeline: **http://127.0.0.1:5000/p7/timeline**
 
 To use the **Defense Dashboard** link in Admin, start Part 8 in another terminal
 from the repository root:

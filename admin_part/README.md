@@ -19,3 +19,16 @@ the HMI and publisher environments. Do not use these demo values as real
 secrets.
 
 All actions are human decisions recorded locally. No response is executed.
+
+
+terminal we will run. 
+
+chem_shield_p1/.venv/bin/python -m admin_part.manage_users create admin --role administrator
+
+chem_shield_p1/.venv/bin/python -m admin_part.manage_users list
+chem_shield_p1/.venv/bin/python -m admin_part.manage_users delete USER_NAME
+
+this part will open the admin page
+
+"chem_shield_p1/.venv/bin/python -m admin_part.app"
+
